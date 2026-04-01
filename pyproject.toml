@@ -1,0 +1,65 @@
+[build-system]
+requires = ["scikit-build-core>=0.9", "pybind11>=2.13"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "csvpp"
+version = "0.1.0"
+description = "C++17 CSV integer parser — 3× faster CSV-to-DataFrame loading than pandas"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+dependencies = ["numpy>=1.21"]
+keywords = ["csv", "parser", "pandas", "dataframe", "pybind11", "numpy", "c++"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.urls]
+Homepage   = "https://github.com/bi3lu/csvpp"
+Repository = "https://github.com/bi3lu/csvpp"
+"Bug Tracker" = "https://github.com/bi3lu/csvpp/issues"
+
+[project.optional-dependencies]
+benchmark = ["pandas>=1.5"]
+dev       = ["pandas>=1.5", "build", "twine", "mypy", "ruff", "numpy>=1.21"]
+
+[tool.scikit-build]
+wheel.packages   = ["src/csvpp"]
+cmake.build-type = "Release"
+
+[tool.scikit-build.cmake.define]
+# Set to OFF when building distribution wheels (e.g. via cibuildwheel).
+FAST_PARSER_NATIVE = "ON"
+
+# ── Mypy ─────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version      = "3.9"
+strict              = true
+warn_unused_ignores = true
+files               = ["src", "examples", "benchmarks"]
+
+[[tool.mypy.overrides]]
+module = "csvpp._core"
+ignore_missing_imports = true
+
+# ── Ruff ─────────────────────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py38"
+line-length    = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
