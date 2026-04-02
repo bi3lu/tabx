@@ -2,7 +2,7 @@
 
 A C++17 data parser exposed to Python via [pybind11](https://github.com/pybind/pybind11):
 
-- a typed CSV path that builds pandas-like `DataFrame`s with mixed column types
+- a fast integer-only CSV path
 - an XLSX path that builds pandas-like `DataFrame`s with mixed column types
 
 The project demonstrates end-to-end native extension development: a zero-dependency C++ core, a CMake build system with automatic pybind11 download, and benchmarks comparing CSV/XLSX DataFrame loading speed against pandas.
@@ -14,8 +14,7 @@ The project demonstrates end-to-end native extension development: a zero-depende
 - **C++17** core with no external runtime dependencies
 - **pybind11** bindings compiled as a native `.so` / `.pyd` extension module
 - **CMake** build system — pybind11 is fetched automatically via `FetchContent`
-- **Typed CSV DataFrame path** — per-column inference for `int`, `float`, `string`, `bool`, and mixed columns
-- **Fast CSV integer path** — zero-copy NumPy `int32` via `parse_csv_numpy` for numeric-only workloads
+- **Fast CSV integer path** — zero-copy NumPy `int32` buffer for numeric CSV workloads
 - **Typed XLSX DataFrame path** — per-column inference for `int`, `float`, `string`, `bool`, and mixed columns
 - **Allman style** throughout all C++ sources
 - **Type stubs** (`.pyi`) for IDE auto-completion and static analysis
@@ -117,71 +116,18 @@ flat  = tabx.parse_csv_flat(csv_text, skip_header=True)  # [100, 200, 300, 400]
 total = tabx.sum_csv_all(csv_text, skip_header=True) # 1000
 ```
 
-### CSV → DataFrame
+### CSV → DataFrame (the fast path)
 
 ```python
-# Mixed-type CSV is converted into a regular pandas DataFrame.
-df = tabx.parse_csv_dataframe(csv_text)
+# One-liner: single C++ pass → zero-copy NumPy buffer → pd.DataFrame
+df = tabx.parse_csv_dataframe(csv_text) # dtype int32
 
-# Example inferred dtypes:
-# - all integers, no nulls -> int64
-# - integers/floats with blanks -> float64
-# - all booleans -> bool
-# - strings or mixed columns -> object
-
-# For numeric-only CSV, direct NumPy fast path is still available:
+# For direct NumPy access (no DataFrame construction):
 arr, cols = tabx.parse_csv_numpy(csv_text, skip_header=True)
 
-# pandas equivalent:
-# import io, pandas as pd
-# df = pd.read_csv(io.StringIO(csv_text))
+# pandas equivalent (3× slower on integer-only CSVs)
+# import io, pandas as pd; df = pd.read_csv(io.StringIO(csv_text))
 ```
-
-For lower-level CSV access there are two entry points:
-
-- `tabx.parse_csv_dataframe(...)` — mixed-type, pandas-like DataFrame construction
-- `tabx.parse_csv_numpy(...)` — integer-only NumPy fast path (`int32`)
-
-### Typical Python CSV workflow
-
-In regular ETL/data-processing code, use `tabx` for ingestion and `pandas` for
-all downstream logic:
-
-```python
-import pandas as pd
-import tabx
-
-csv_text = """order_id,region,qty,unit_price,status
-1,EMEA,2,120.5,paid
-2,APAC,1,99.9,pending
-3,EMEA,5,45.0,paid
-"""
-
-# Load CSV with tabx into a regular pandas DataFrame
-df = tabx.parse_csv_dataframe(csv_text, skip_header=True)
-
-# Continue with standard pandas operations
-df = df[df["status"] == "paid"].copy()
-df["revenue"] = df["qty"] * df["unit_price"]
-
-summary = (
-  df.groupby("region", dropna=False)
-  .agg(
-    orders=("order_id", "count"),
-    total_revenue=("revenue", "sum"),
-    avg_ticket=("revenue", "mean"),
-  )
-  .sort_values("total_revenue", ascending=False)
-)
-
-print(summary)
-```
-
-This is the intended CSV usage model:
-
-- `tabx` handles fast CSV loading
-- output is a normal `pd.DataFrame`
-- filtering, joins, groupby, and export are done with pandas
 
 ### XLSX → DataFrame
 
@@ -209,7 +155,7 @@ For lower-level access there are two XLSX entry points:
 - `tabx.parse_xlsx_dataframe(...)` — mixed-type, pandas-like DataFrame construction
 - `tabx.parse_xlsx_numpy(...)` — integer-only NumPy fast path for numeric worksheets
 
-### Typical Python XLSX workflow
+### Typical Python workflow
 
 In normal application code, `tabx` is the loading step and `pandas` does the rest:
 
@@ -285,7 +231,6 @@ Both backends produce an identical `pd.DataFrame`. The benchmark verifies shape 
 python benchmarks/benchmark.py                                  # default: both formats
 python benchmarks/benchmark.py --format csv                     # CSV only
 python benchmarks/benchmark.py --format xlsx                    # XLSX only
-python benchmarks/benchmark.py --format xlsx-mixed              # XLSX mixed types
 python benchmarks/benchmark.py --format both --rows 500000 --cols 8 --iterations 20
 ```
 
@@ -293,30 +238,25 @@ python benchmarks/benchmark.py --format both --rows 500000 --cols 8 --iterations
 
 - `csv`  — `pandas.read_csv` vs `tabx.parse_csv_dataframe`
 - `xlsx` — `pandas.read_excel` vs `tabx.parse_xlsx_dataframe`
-- `xlsx-mixed` — mixed-type XLSX: `pandas.read_excel` vs `tabx.parse_xlsx_dataframe`
 - `both` — runs CSV and XLSX sequentially
 
-`xlsx-mixed` ignores `--cols` and always generates a 5-column mixed schema:
-`int`, `float?`, `string`, `bool`, `mixed`.
-
-### Example Results — XLSX MIXED, 2 000 rows × 5 mixed-type columns, 2 iterations
+### Example Results — XLSX, 2 000 rows × 5 integer columns, 2 iterations
 
 ```
-Dataset:    2,000 rows × 5 mixed-type columns (int, float?, string, bool, mixed)
+Dataset:    2,000 rows × 5 integer columns
 Iterations: 2 per method
 
-=== XLSX MIXED ===
-  pandas                   ...     36.83 ms
-  tabx (C++)               ...      4.85 ms
+=== XLSX ===
+  pandas                   ...     22.73 ms
+  tabx (C++)               ...      3.41 ms
 
 Method          Avg time    vs fastest
 ────────────────────────────────────────
-tabx (C++)        4.85 ms         1.00×  ← fastest
-pandas           36.83 ms         7.59×
+tabx (C++)        3.41 ms         1.00×  ← fastest
+pandas           22.73 ms         6.66×
 
-tabx is 7.6× faster than pandas (XLSX MIXED)
+tabx is 6.7× faster than pandas (XLSX)
 Output shape: (2000, 5)
-Output dtypes: int64, float64, str, bool, object
 ```
 
 ### Why tabx wins
@@ -326,9 +266,9 @@ For CSV:
 | Step | `pandas.read_csv` | `tabx` |
 |---|---|---|
 | Input handling | `io.StringIO(text)` — heap allocation | `std::string_view` — zero copy |
-| Tokenisation | generic parser + inference | custom parser + per-column inference in C++ |
-| Memory layout | per-column allocation | pre-sized typed column arrays |
-| DataFrame construction | automatic (heavy) | `pd.DataFrame(dict(zip(cols, arrays)))` |
+| Tokenisation | C CSV tokenizer + per-column type inference | custom branchless int parser, single pass |
+| Memory layout | per-column NumPy allocation | one `reserve()` into a flat int32 buffer |
+| DataFrame construction | automatic (heavy) | `pd.DataFrame(arr, columns=cols)` — O(1) wrap |
 
 For XLSX:
 
@@ -336,7 +276,7 @@ For XLSX:
 - `tabx.parse_xlsx_dataframe` parses the workbook in C++, classifies cells once, and materialises column arrays directly for pandas-style dtypes.
 - On integer-only sheets, `tabx.parse_xlsx_numpy` still exposes the narrower `int32` fast path.
 
-The benchmark measures **end-to-end wall time**: everything from raw CSV text or XLSX file to a usable `pd.DataFrame`. Use `xlsx` for integer-focused sheets and `xlsx-mixed` for realistic mixed-type workloads.
+The benchmark measures **end-to-end wall time**: everything from raw CSV text or XLSX file to a usable `pd.DataFrame`. The included XLSX benchmark uses integer-only sheets so it can stress the numeric hot path directly.
 
 ---
 
