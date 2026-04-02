@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, overload
+from typing import Any, Literal, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -135,3 +135,22 @@ def parse_xlsx_numpy(
     sheet_name: str = ...,
     skip_header: bool = ...,
 ) -> tuple[npt.NDArray[np.int32], list[str] | list[int]]: ...
+
+# Column arrays returned by parse_xlsx_mixed may be typed numpy arrays or
+# Python object lists; Any captures both without requiring numpy-stubs overloads.
+def parse_xlsx_mixed(
+    file_path: str,
+    sheet_name: str = ...,
+    skip_header: bool = ...,
+) -> tuple[list[Any], list[str] | list[int]]:
+    """Parse an XLSX worksheet into per-column typed arrays.
+
+    Each element of the returned column list is a typed numpy array
+    (``int64``, ``float64``, or ``bool``) for uniform columns, or a Python
+    ``list`` for string/mixed columns.  Use ``parse_xlsx_dataframe`` to get
+    a ``pd.DataFrame`` directly.
+
+    Returns:
+        A tuple ``(column_arrays, column_names)``.
+    """
+    ...

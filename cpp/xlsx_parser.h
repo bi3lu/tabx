@@ -19,6 +19,67 @@ struct XlsxSheet
 };
 
 /**
+ * @brief Classification of an individual worksheet cell value.
+ */
+enum class XlsxCellKind : uint8_t
+{
+    Empty   = 0,  ///< Blank, missing, or self-closing cell; maps to NaN/None.
+    Integer = 1,  ///< Whole number (exact for |value| ≤ 2^53, stored as double).
+    Float   = 2,  ///< Floating-point number stored as double.
+    Boolean = 3,  ///< Boolean cell (XLSX t="b"); bval holds the truth value.
+    String  = 4,  ///< Text cell (shared string, inline string, or formula string).
+    Error   = 5,  ///< Formula error (e.g. #DIV/0!); treated as empty downstream.
+};
+
+/**
+ * @brief A single typed cell value from a parsed XLSX worksheet.
+ */
+struct XlsxRawCell
+{
+    XlsxCellKind kind = XlsxCellKind::Empty;
+    double       dval = 0.0;    ///< Numeric value for Integer / Float cells.
+    std::string  sval;           ///< Text value for String cells.
+    bool         bval = false;   ///< Truth value for Boolean cells.
+};
+
+/**
+ * @brief Full mixed-type result from parsing one XLSX worksheet.
+ *
+ * Cells are stored row-major: the cell at (row r, col c) is
+ * @c cells[r * cols + c].  Missing/sparse cells are XlsxCellKind::Empty.
+ */
+struct XlsxMixedResult
+{
+    std::vector<std::string>  headers; ///< Column names; empty when skip_header=false.
+    std::size_t               rows = 0;
+    std::size_t               cols = 0;
+    std::vector<XlsxRawCell>  cells;   ///< Row-major buffer; size == rows * cols.
+};
+
+/**
+ * @brief Parse a worksheet into a per-cell typed result.
+ *
+ * Numeric cells become Integer or Float, boolean cells (t="b") become Boolean,
+ * text cells become String, formula errors become Error, and blank/sparse cells
+ * become Empty.  All cell types are handled — unlike parse_xlsx_into_buffer
+ * which accepts only integers.
+ *
+ * @param file_path   Path to the .xlsx file.
+ * @param sheet_name  Worksheet name; empty string selects the first sheet.
+ * @param skip_header When true, the first non-empty row is used as column names.
+ */
+XlsxMixedResult parse_xlsx_mixed(
+    const std::string& file_path,
+    const std::string& sheet_name,
+    bool               skip_header);
+
+/// Convenience overload for a pre-loaded byte buffer.
+XlsxMixedResult parse_xlsx_mixed(
+    const std::vector<uint8_t>& xlsx_bytes,
+    const std::string&          sheet_name,
+    bool                        skip_header);
+
+/**
  * @brief List all worksheets in the given XLSX file.
  *
  * Reads only @c xl/workbook.xml — sheet data is not loaded.

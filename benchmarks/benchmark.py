@@ -4,10 +4,12 @@
 Supported benchmark formats:
     - csv  : pandas.read_csv(io.StringIO(csv_text)) vs tabx.parse_csv_dataframe(...)
     - xlsx : pandas.read_excel(path) vs tabx.parse_xlsx_dataframe(path)
+    - xlsx-mixed : pandas.read_excel(path) vs tabx.parse_xlsx_dataframe(path)
 
 Example:
         python benchmarks/benchmark.py
         python benchmarks/benchmark.py --format xlsx --rows 500000 --cols 8 --iterations 20
+        python benchmarks/benchmark.py --format xlsx-mixed --rows 50000 --iterations 10
 """
 
 from __future__ import annotations
@@ -87,6 +89,53 @@ def table_to_dataframe(cols: list[str], rows: list[list[int]]) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=cols, dtype="int32")
 
 
+def generate_mixed_xlsx_dataframe(
+    n_rows: int,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Return deterministic mixed-type tabular data for XLSX benchmarks.
+
+    The schema is intentionally limited to types currently handled by tabx:
+    integers, floats, strings, booleans, and object/mixed columns.
+    """
+    rng = random.Random(seed)
+
+    ints: list[int] = []
+    floats: list[float | None] = []
+    strings: list[str] = []
+    bools: list[bool] = []
+    mixed: list[int | str | None] = []
+
+    for i in range(n_rows):
+        ints.append(rng.randint(1, 1_000_000))
+
+        if i % 7 == 0:
+            floats.append(None)
+        else:
+            floats.append(round(rng.uniform(0.0, 10_000.0), 3))
+
+        strings.append(f"label_{rng.randint(1, 500)}")
+        bools.append((i + rng.randint(0, 1)) % 2 == 0)
+
+        selector = i % 3
+        if selector == 0:
+            mixed.append(rng.randint(1, 10_000))
+        elif selector == 1:
+            mixed.append(f"code_{rng.randint(1, 300)}")
+        else:
+            mixed.append(None)
+
+    return pd.DataFrame(
+        {
+            "ints": ints,
+            "floats": floats,
+            "strings": strings,
+            "bools": bools,
+            "mixed": mixed,
+        }
+    )
+
+
 # Implementations:
 
 
@@ -143,13 +192,31 @@ def _verify(df_pandas: pd.DataFrame, df_tabx: pd.DataFrame) -> None:
         assert s_p == s_t, f"Column '{col}' sum mismatch: pandas={s_p} tabx={s_t}"
 
 
+def _verify_mixed(df_pandas: pd.DataFrame, df_tabx: pd.DataFrame) -> None:
+    """Raise AssertionError if mixed-type XLSX results differ."""
+    assert list(df_pandas.columns) == list(df_tabx.columns), (
+        f"Column mismatch: pandas={list(df_pandas.columns)} "
+        f"tabx={list(df_tabx.columns)}"
+    )
+
+    pd.testing.assert_frame_equal(
+        df_pandas,
+        df_tabx,
+        check_dtype=False,
+        check_exact=True,
+    )
+
+
 def _run_single_benchmark(
     title: str,
+    dataset_label: str,
     payload: str,
     loaders: list[tuple[str, Callable[[str], pd.DataFrame]]],
     iterations: int,
+    verify_fn: Callable[[pd.DataFrame, pd.DataFrame], None] = _verify,
 ) -> None:
     """Run and print one benchmark table (CSV or XLSX)."""
+    print(dataset_label)
     print(f"\n=== {title} ===")
 
     timings: dict[str, float] = {}
@@ -162,7 +229,7 @@ def _run_single_benchmark(
         results.append(df)
         print(f"  {avg_s * 1_000:>8.2f} ms")
 
-    _verify(results[0], results[1])
+    verify_fn(results[0], results[1])
 
     fastest = min(timings.values())
     name_w = max(len(k) for k in timings) + 2
@@ -177,7 +244,10 @@ def _run_single_benchmark(
 
     speedup = timings["pandas"] / timings["tabx (C++)"]
     print(f"\ntabx is {speedup:.1f}× faster than pandas ({title})")
-    print(f"Output shape: {results[1].shape}  dtype: {results[1].dtypes.iloc[0].name}")
+    print(f"Output shape: {results[1].shape}")
+    print(
+        "Output dtypes:", ", ".join(str(dtype) for dtype in results[1].dtypes.tolist())
+    )
 
 
 # Entry point:
@@ -189,7 +259,6 @@ def run(
     iterations: int = 10,
     fmt: str = "both",
 ) -> None:
-    print(f"Dataset:    {n_rows:,} rows × {n_cols} integer columns")
     print(f"Iterations: {iterations} per method\n")
 
     cols, rows = generate_table(n_rows, n_cols)
@@ -198,6 +267,7 @@ def run(
     if fmt in {"csv", "both"}:
         _run_single_benchmark(
             title="CSV",
+            dataset_label=f"Dataset:    {n_rows:,} rows × {n_cols} integer columns",
             payload=csv_text,
             loaders=[
                 ("pandas", _pandas_csv_df),
@@ -213,12 +283,33 @@ def run(
 
             _run_single_benchmark(
                 title="XLSX",
+                dataset_label=f"Dataset:    {n_rows:,} rows × {n_cols} integer columns",
                 payload=str(xlsx_path),
                 loaders=[
                     ("pandas", _pandas_xlsx_df),
                     ("tabx (C++)", _tabx_xlsx_df),
                 ],
                 iterations=iterations,
+            )
+
+    if fmt == "xlsx-mixed":
+        with tempfile.TemporaryDirectory(prefix="tabx_bench_mixed_") as tmpdir:
+            xlsx_path = Path(tmpdir) / "dataset_mixed.xlsx"
+            generate_mixed_xlsx_dataframe(n_rows).to_excel(xlsx_path, index=False)
+
+            _run_single_benchmark(
+                title="XLSX MIXED",
+                dataset_label=(
+                    f"Dataset:    {n_rows:,} rows × 5 mixed-type columns "
+                    "(int, float?, string, bool, mixed)"
+                ),
+                payload=str(xlsx_path),
+                loaders=[
+                    ("pandas", _pandas_xlsx_df),
+                    ("tabx (C++)", _tabx_xlsx_df),
+                ],
+                iterations=iterations,
+                verify_fn=_verify_mixed,
             )
 
 
@@ -235,7 +326,10 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=5,
         metavar="N",
-        help=f"Number of integer columns (1–{len(_COLUMNS)}).",
+        help=(
+            f"Number of integer columns (1–{len(_COLUMNS)}). "
+            "Used by csv/xlsx; ignored by xlsx-mixed."
+        ),
     )
     p.add_argument(
         "--iterations",
@@ -247,7 +341,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--format",
         dest="fmt",
-        choices=["csv", "xlsx", "both"],
+        choices=["csv", "xlsx", "xlsx-mixed", "both"],
         default="both",
         help="Input format to benchmark.",
     )

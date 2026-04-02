@@ -6,6 +6,7 @@ from ._core import list_xlsx_sheets as list_xlsx_sheets
 from ._core import parse_csv_flat as parse_csv_flat
 from ._core import parse_csv_numbers as parse_csv_numbers
 from ._core import parse_csv_numpy as parse_csv_numpy
+from ._core import parse_xlsx_mixed as parse_xlsx_mixed
 from ._core import parse_xlsx_numpy as parse_xlsx_numpy
 from ._core import sum_csv_all as sum_csv_all
 from ._core import sum_csv_numbers as sum_csv_numbers
@@ -43,14 +44,21 @@ def parse_xlsx_dataframe(
     sheet_name: str = ...,
     skip_header: bool = ...,
 ) -> DataFrameLike:
-    """Parse an integer XLSX worksheet directly into a ``pd.DataFrame``.
+    """Parse an XLSX worksheet into a ``pd.DataFrame`` with inferred column types.
+
+    Column types are inferred per-column, mirroring ``pandas.read_excel``:
+
+    * All integers, no nulls → ``int64``
+    * Integers/floats with possible empty cells → ``float64`` (empty → NaN)
+    * All booleans → ``bool``
+    * Any strings or mixed types → ``object``
 
     Args:
         file_path: Path to an ``.xlsx`` file.
         sheet_name: Worksheet name. Empty string selects the first sheet.
-        skip_header: When ``True``, first row becomes column names.
+        skip_header: When ``True`` (default), first row becomes column names.
 
     Returns:
-        A ``pd.DataFrame`` with ``int32`` columns.
+        A ``pd.DataFrame`` with per-column inferred dtypes.
     """
     ...

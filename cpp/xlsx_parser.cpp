@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <cmath>
 
 #include <zlib.h>
 
@@ -568,6 +569,95 @@ inline void parse_cell_address(
 
 }  // namespace
 
+    // ---- Helpers for mixed-type parsing ----------------------------------------
+
+    bool try_parse_int64(const std::string& s, std::int64_t& out)
+    {
+        if (s.empty())
+            return false;
+
+        // Presence of '.', 'e', or 'E' means it is a floating-point literal.
+        for (const char c : s)
+        {
+            if (c == '.' || c == 'e' || c == 'E')
+                return false;
+        }
+
+        try
+        {
+            std::size_t pos = 0;
+            out = std::stoll(s, &pos);
+            return pos == s.size();
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+
+    bool try_parse_double(const std::string& s, double& out)
+    {
+        if (s.empty())
+            return false;
+
+        try
+        {
+            std::size_t pos = 0;
+            out = std::stod(s, &pos);
+            return pos == s.size() && std::isfinite(out);
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+
+    // Classify one XLSX cell.
+    // resolved_value: the raw <v> text, with shared-string lookup already applied.
+    // xlsx_type: the raw value of the t="" attribute on <c> (may be empty).
+    XlsxRawCell classify_xlsx_cell(const std::string& resolved_value,
+                                    const std::string& xlsx_type)
+    {
+        // Boolean: t="b", value is "0" or "1"
+        if (xlsx_type == "b")
+        {
+            const std::string t = trim_copy(resolved_value);
+            return XlsxRawCell{XlsxCellKind::Boolean, 0.0, "", t == "1"};
+        }
+
+        // Formula error: t="e"
+        if (xlsx_type == "e")
+            return XlsxRawCell{XlsxCellKind::Error, 0.0, resolved_value, false};
+
+        // Text: shared-string (already resolved), formula string, or inline string
+        if (xlsx_type == "s" || xlsx_type == "str" || xlsx_type == "inlineStr")
+            {
+                const std::string text = trim_copy(resolved_value);
+                if (text.empty())
+                    return XlsxRawCell{XlsxCellKind::Empty, 0.0, "", false};
+                return XlsxRawCell{XlsxCellKind::String, 0.0, resolved_value, false};
+            }
+
+        // Numeric cell: t="" or t="n"
+        const std::string t = trim_copy(resolved_value);
+
+        if (t.empty())
+            return XlsxRawCell{XlsxCellKind::Empty, 0.0, "", false};
+
+        std::int64_t ival = 0;
+
+        if (try_parse_int64(t, ival))
+            return XlsxRawCell{XlsxCellKind::Integer, static_cast<double>(ival), "", false};
+
+        double dval = 0.0;
+
+        if (try_parse_double(t, dval))
+            return XlsxRawCell{XlsxCellKind::Float, dval, "", false};
+
+        // Last resort: treat unexpected text in a numeric cell as a string
+        return XlsxRawCell{XlsxCellKind::String, 0.0, t, false};
+    }
+
 std::vector<XlsxSheet> list_xlsx_sheets(const std::string& file_path)
 {
     const std::vector<std::uint8_t> bytes = read_file_bytes(file_path);
@@ -758,6 +848,178 @@ CsvShape parse_xlsx_into_buffer(
     }
 
     return CsvShape{data_rows, cols};
+}
+
+
+XlsxMixedResult parse_xlsx_mixed(
+    const std::string& file_path,
+    const std::string& sheet_name,
+    bool skip_header)
+{
+    const std::vector<std::uint8_t> bytes = read_file_bytes(file_path);
+    return parse_xlsx_mixed(bytes, sheet_name, skip_header);
+}
+
+XlsxMixedResult parse_xlsx_mixed(
+    const std::vector<uint8_t>& xlsx_bytes,
+    const std::string& sheet_name,
+    bool skip_header)
+{
+    const auto entries          = parse_zip_central_directory(xlsx_bytes);
+    const std::string workbook_xml  = extract_zip_entry(xlsx_bytes, entries, "xl/workbook.xml");
+    const std::string rels_xml      = extract_zip_entry(xlsx_bytes, entries, "xl/_rels/workbook.xml.rels");
+    const std::string sheet_xml_path = resolve_sheet_xml_path(workbook_xml, rels_xml, sheet_name);
+    const std::string sheet_xml     = extract_zip_entry(xlsx_bytes, entries, sheet_xml_path);
+
+    std::vector<std::string> shared_strings;
+    if (entries.count("xl/sharedStrings.xml"))
+    {
+        const std::string sst = extract_zip_entry(xlsx_bytes, entries, "xl/sharedStrings.xml");
+        shared_strings = parse_shared_strings(sst);
+    }
+
+    // Each data row is a sparse map: col_index → classified cell
+    using RowMap = std::unordered_map<std::size_t, XlsxRawCell>;
+
+    std::vector<RowMap> rows_data;
+    std::vector<std::string> headers;
+    std::size_t max_cols  = 0;
+
+    bool hdr_done  = !skip_header;
+
+    std::size_t pos = 0;
+    while ((pos = sheet_xml.find("<row", pos)) != std::string::npos)
+    {
+        const std::size_t row_open_end = find_tag_end(sheet_xml, pos);
+        const std::size_t row_close    = sheet_xml.find("</row>", row_open_end + 1);
+
+        if (row_close == std::string::npos)
+            throw std::runtime_error("Malformed sheet XML: missing </row>");
+
+        const std::string row_xml =
+            sheet_xml.substr(row_open_end + 1, row_close - (row_open_end + 1));
+
+        // Collect raw (resolved) values for every cell in this row
+        // key: col_index, value: (resolved_text, xlsx_type_attr)
+        std::unordered_map<std::size_t, std::pair<std::string, std::string>> raw_row;
+        std::size_t max_col_in_row = 0;
+        std::size_t cpos = 0;
+
+        while ((cpos = row_xml.find("<c", cpos)) != std::string::npos)
+        {
+            const std::size_t c_open_end = find_tag_end(row_xml, cpos);
+            const std::string c_tag = row_xml.substr(cpos, c_open_end - cpos + 1);
+            const std::string r_attr = get_attr_value(c_tag, "r");
+
+            if (r_attr.empty())
+                throw std::runtime_error("Malformed XLSX cell: missing r attribute");
+
+            std::size_t col_idx = 0, row_dummy = 0;
+            parse_cell_address(r_attr.c_str(), r_attr.size(), col_idx, row_dummy);
+            max_col_in_row = std::max(max_col_in_row, col_idx);
+
+            const std::string xlsx_type  = get_attr_value(c_tag, "t");
+            const bool self_closing = c_open_end > cpos && row_xml[c_open_end - 1] == '/';
+
+            std::string raw_value;
+            std::size_t next_pos = c_open_end + 1;
+
+            if (!self_closing)
+            {
+                const std::size_t c_close = row_xml.find("</c>", c_open_end + 1);
+
+                if (c_close == std::string::npos)
+                    throw std::runtime_error("Malformed XLSX cell: missing </c>");
+
+                const std::string inner =
+                    row_xml.substr(c_open_end + 1, c_close - (c_open_end + 1));
+
+                raw_value = (xlsx_type == "inlineStr")
+                    ? extract_first_tag_text(inner, "t")
+                    : extract_first_tag_text(inner, "v");
+
+                next_pos = c_close + 4;
+            }
+
+            // Resolve shared-string index → actual text
+            if (xlsx_type == "s" && !raw_value.empty())
+            {
+                const std::int32_t idx = parse_int32_token(raw_value);
+
+                if (idx < 0 || static_cast<std::size_t>(idx) >= shared_strings.size())
+                    throw std::runtime_error("Shared-string index out of range");
+
+                raw_value = shared_strings[static_cast<std::size_t>(idx)];
+            }
+
+            raw_row[col_idx] = {raw_value, xlsx_type};
+            cpos = next_pos;
+        }
+
+        const std::size_t row_width = raw_row.empty() ? 0 : (max_col_in_row + 1);
+        
+        if (row_width == 0)
+        {
+            pos = row_close + 6;
+            continue;
+        }
+
+        if (!hdr_done)
+        {
+            max_cols = std::max(max_cols, row_width);
+            headers.reserve(row_width);
+
+            for (std::size_t c = 0; c < row_width; ++c)
+            {
+                const auto it = raw_row.find(c);
+                std::string h = (it != raw_row.end()) ? trim_copy(it->second.first) : "";
+
+                if (h.empty())
+                    h = "Column_" + std::to_string(c);
+
+                headers.push_back(std::move(h));
+            }
+
+            hdr_done = true;
+            pos = row_close + 6;
+            continue;
+        }
+
+        // Data row: classify each cell and store in sparse map
+        max_cols = std::max(max_cols, row_width);
+        RowMap row_map;
+        row_map.reserve(raw_row.size());
+
+        for (const auto& kv : raw_row)
+            row_map[kv.first] = classify_xlsx_cell(kv.second.first, kv.second.second);
+
+        rows_data.push_back(std::move(row_map));
+
+        pos = row_close + 6;
+    }
+
+    // Build the result: fill a dense row-major matrix, Empty for missing cells
+    XlsxMixedResult result;
+    result.rows = rows_data.size();
+    result.cols = max_cols;
+    result.headers = std::move(headers);
+
+    // Auto-generate names for columns that exceed the header row width
+    while (result.headers.size() < result.cols)
+        result.headers.push_back("Column_" + std::to_string(result.headers.size()));
+
+    result.cells.resize(result.rows * result.cols);  // default-constructed = Empty
+
+    for (std::size_t r = 0; r < result.rows; ++r)
+    {
+        for (const auto& kv : rows_data[r])
+        {
+            if (kv.first < result.cols)
+                result.cells[r * result.cols + kv.first] = kv.second;
+        }
+    }
+
+    return result;
 }
 
 }  // namespace tabx

@@ -19,9 +19,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ._core import (list_xlsx_sheets, parse_csv_flat, parse_csv_numbers,
-                    parse_csv_numpy, parse_xlsx_numpy, sum_csv_all,
-                    sum_csv_numbers)
+from ._core import (
+    list_xlsx_sheets,
+    parse_csv_flat,
+    parse_csv_numbers,
+    parse_csv_numpy,
+    parse_xlsx_mixed,
+    parse_xlsx_numpy,
+    sum_csv_all,
+    sum_csv_numbers,
+)
 
 if TYPE_CHECKING:
     import pandas as pd  # type: ignore[import-untyped]
@@ -118,3 +125,47 @@ def parse_xlsx_dataframe(
     )
 
     return pd.DataFrame(arr, columns=cols)
+
+
+def parse_xlsx_dataframe(
+    file_path: str,
+    sheet_name: str = "",
+    skip_header: bool = True,
+) -> "pd.DataFrame":
+    """Parse an XLSX worksheet into a ``pd.DataFrame`` with inferred column types.
+
+    Column types are inferred per-column, mirroring ``pandas.read_excel``:
+
+    * All integers, no nulls → ``int64``
+    * Integers/floats, with possible empty cells → ``float64`` (empty → NaN)
+    * All booleans → ``bool``
+    * Any strings or mixed types → ``object``
+
+    Args:
+        file_path: Path to an ``.xlsx`` file.
+        sheet_name: Worksheet name. Empty string means the first sheet.
+        skip_header: When ``True`` (default), first row becomes column names.
+
+    Returns:
+        ``pd.DataFrame`` with per-column inferred dtypes.
+
+    Raises:
+        RuntimeError: On malformed XLSX or ZIP/XML parse errors.
+        ImportError: If ``pandas`` is not installed.
+    """
+    try:
+        import pandas as pd
+
+    except ImportError as exc:
+        raise ImportError(
+            "pandas is required for parse_xlsx_dataframe. "
+            "Install it with: pip install pandas"
+        ) from exc
+
+    columns, col_names = parse_xlsx_mixed(
+        file_path=file_path,
+        sheet_name=sheet_name,
+        skip_header=skip_header,
+    )
+
+    return pd.DataFrame(dict(zip(col_names, columns)))
