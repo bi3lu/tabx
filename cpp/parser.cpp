@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace fast_parser
+namespace tabx
 {
 
 namespace
@@ -304,4 +304,4 @@ CsvShape parse_csv_into_buffer(
     return {n_rows, n_cols};
 }
 
-}  // namespace fast_parser
+}  // namespace tabx

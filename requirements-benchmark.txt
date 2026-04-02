@@ -1,3 +1,4 @@
 # Dependency for python/benchmark.py.
 # Install with: pip install -r requirements-benchmark.txt
 pandas>=1.5
+openpyxl>=3.1
