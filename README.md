@@ -27,21 +27,21 @@ The project demonstrates end-to-end native extension development: a zero-depende
 ```
 tabx/
 ├── cpp/
-│   ├── parser.h             # Public API with Doxygen-style comments
-│   └── parser.cpp           # Core parsing logic
+│   ├── parser.h            # Public API with Doxygen-style comments
+│   └── parser.cpp          # Core parsing logic
 ├── python/
-│   └── wrapper.cpp          # pybind11 module definition (_core)
+│   └── wrapper.cpp         # pybind11 module definition (_core)
 ├── src/
-│   └── tabx/      	 # Installable Python package
-│       ├── __init__.py      # Public re-exports + __version__
-│       ├── __init__.pyi     # Type stubs for the public Python API
-│       ├── _core.pyi        # Type stubs for the native extension (overloads, NDArray[np.int32])
-│       └── py.typed         # PEP 561 marker
+│   └── tabx/               # Installable Python package
+│       ├── __init__.py     # Public re-exports + __version__
+│       ├── __init__.pyi    # Type stubs for the public Python API
+│       ├── _core.pyi       # Type stubs for the native extension (overloads, NDArray[np.int32])
+│       └── py.typed        # PEP 561 marker
 ├── examples/
-│   └── example.py           # Quick usage demo
+│   └── example.py          # Quick usage demo
 ├── benchmarks/
-│   └── benchmark.py         # pandas vs tabx benchmark (CSV + XLSX)
-├── pyproject.toml           # Build config (scikit-build-core + mypy + ruff)
+│   └── benchmark.py        # pandas vs tabx benchmark (CSV + XLSX)
+├── pyproject.toml          # Build config (scikit-build-core + mypy + ruff)
 ├── CMakeLists.txt
 ├── requirements-benchmark.txt
 └── README.md
@@ -113,14 +113,14 @@ csv_text = "value\n100\n200\n300\n400"
 flat  = tabx.parse_csv_flat(csv_text, skip_header=True)  # [100, 200, 300, 400]
 
 # Sum all integers across all rows
-total = tabx.sum_csv_all(csv_text, skip_header=True)     # 1000
+total = tabx.sum_csv_all(csv_text, skip_header=True) # 1000
 ```
 
 ### CSV → DataFrame (the fast path)
 
 ```python
 # One-liner: single C++ pass → zero-copy NumPy buffer → pd.DataFrame
-df = tabx.parse_csv_dataframe(csv_text)   # dtype int32
+df = tabx.parse_csv_dataframe(csv_text) # dtype int32
 
 # For direct NumPy access (no DataFrame construction):
 arr, cols = tabx.parse_csv_numpy(csv_text, skip_header=True)
@@ -229,8 +229,8 @@ Both backends produce an identical `pd.DataFrame`. The benchmark verifies shape 
 
 ```bash
 python benchmarks/benchmark.py                                  # default: both formats
-python benchmarks/benchmark.py --format csv                    # CSV only
-python benchmarks/benchmark.py --format xlsx                   # XLSX only
+python benchmarks/benchmark.py --format csv                     # CSV only
+python benchmarks/benchmark.py --format xlsx                    # XLSX only
 python benchmarks/benchmark.py --format both --rows 500000 --cols 8 --iterations 20
 ```
 
