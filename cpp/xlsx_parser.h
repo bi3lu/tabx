@@ -6,7 +6,7 @@
 
 #include "parser.h"  // CsvShape
 
-namespace fast_parser
+namespace tabx
 {
 
 /**
@@ -84,4 +84,4 @@ CsvShape parse_xlsx_into_buffer(
     std::vector<std::string>*   header_out = nullptr
 );
 
-}  // namespace fast_parser
+}  // namespace tabx

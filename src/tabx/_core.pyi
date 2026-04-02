@@ -94,7 +94,7 @@ def parse_csv_numpy(
 
     Example::
 
-        arr, cols = fast_parser_py.parse_csv_numpy(csv_text, skip_header=True)
+        arr, cols = tabx.parse_csv_numpy(csv_text, skip_header=True)
         df = pd.DataFrame(arr, columns=cols)
     """
     ...
@@ -104,3 +104,34 @@ def parse_csv_numpy(
     csv_text: str,
     skip_header: Literal[False] = ...,
 ) -> tuple[npt.NDArray[np.int32], list[int]]: ...
+@overload
+def parse_csv_numpy(
+    csv_text: str,
+    skip_header: bool,
+) -> tuple[npt.NDArray[np.int32], list[str] | list[int]]: ...
+def list_xlsx_sheets(file_path: str) -> list[dict[str, int | str]]:
+    """List worksheets in an XLSX workbook.
+
+    Returns:
+        A list like ``[{"name": "Sheet1", "index": 0}, ...]``.
+    """
+    ...
+
+@overload
+def parse_xlsx_numpy(
+    file_path: str,
+    sheet_name: str = ...,
+    skip_header: Literal[True] = ...,
+) -> tuple[npt.NDArray[np.int32], list[str]]: ...
+@overload
+def parse_xlsx_numpy(
+    file_path: str,
+    sheet_name: str = ...,
+    skip_header: Literal[False] = ...,
+) -> tuple[npt.NDArray[np.int32], list[int]]: ...
+@overload
+def parse_xlsx_numpy(
+    file_path: str,
+    sheet_name: str = ...,
+    skip_header: bool = ...,
+) -> tuple[npt.NDArray[np.int32], list[str] | list[int]]: ...

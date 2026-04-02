@@ -3,7 +3,7 @@ requires = ["scikit-build-core>=0.9", "pybind11>=2.13"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "csvpp"
+name = "tabx"
 version = "0.1.0"
 description = "C++17 CSV integer parser — 3× faster CSV-to-DataFrame loading than pandas"
 readme = "README.md"
@@ -28,21 +28,21 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage   = "https://github.com/bi3lu/csvpp"
-Repository = "https://github.com/bi3lu/csvpp"
-"Bug Tracker" = "https://github.com/bi3lu/csvpp/issues"
+Homepage   = "https://github.com/bi3lu/tabx"
+Repository = "https://github.com/bi3lu/tabx"
+"Bug Tracker" = "https://github.com/bi3lu/tabx/issues"
 
 [project.optional-dependencies]
-benchmark = ["pandas>=1.5"]
-dev       = ["pandas>=1.5", "build", "twine", "mypy", "ruff", "numpy>=1.21"]
+benchmark = ["pandas>=1.5", "openpyxl>=3.1"]
+dev       = ["pandas>=1.5", "openpyxl>=3.1", "build", "twine", "mypy", "ruff", "numpy>=1.21"]
 
 [tool.scikit-build]
-wheel.packages   = ["src/csvpp"]
+wheel.packages   = ["src/tabx"]
 cmake.build-type = "Release"
 
 [tool.scikit-build.cmake.define]
 # Set to OFF when building distribution wheels (e.g. via cibuildwheel).
-FAST_PARSER_NATIVE = "ON"
+TABX_NATIVE = "ON"
 
 # ── Mypy ─────────────────────────────────────────────────────────────────────
 [tool.mypy]
@@ -52,7 +52,7 @@ warn_unused_ignores = true
 files               = ["src", "examples", "benchmarks"]
 
 [[tool.mypy.overrides]]
-module = "csvpp._core"
+module = "tabx._core"
 ignore_missing_imports = true
 
 # ── Ruff ─────────────────────────────────────────────────────────────────────

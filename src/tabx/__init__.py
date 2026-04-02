@@ -1,29 +1,30 @@
-"""csvpp — C++17 CSV integer parser with a zero-copy pandas bridge.
+"""tabx — C++17 CSV integer parser with a zero-copy pandas bridge.
 
 Install::
 
-    pip install csvpp
+    pip install tabx
 
 Quick start::
 
-    import csvpp
+    import tabx
 
     # 3× faster than pd.read_csv — returns a real pd.DataFrame
-    df = csvpp.parse_csv_dataframe(csv_text)
+    df = tabx.parse_csv_dataframe(csv_text)
 
     # Or get the raw NumPy array and column names directly:
-    arr, cols = csvpp.parse_csv_numpy(csv_text, skip_header=True)
+    arr, cols = tabx.parse_csv_numpy(csv_text, skip_header=True)
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ._core import (parse_csv_flat, parse_csv_numbers, parse_csv_numpy,
-                    sum_csv_all, sum_csv_numbers)
+from ._core import (list_xlsx_sheets, parse_csv_flat, parse_csv_numbers,
+                    parse_csv_numpy, parse_xlsx_numpy, sum_csv_all,
+                    sum_csv_numbers)
 
 if TYPE_CHECKING:
-    import pandas as pd
+    import pandas as pd  # type: ignore[import-untyped]
 
 __version__: str = "0.1.0"
 __all__: list[str] = [
@@ -33,6 +34,9 @@ __all__: list[str] = [
     "sum_csv_all",
     "parse_csv_numpy",
     "parse_csv_dataframe",
+    "list_xlsx_sheets",
+    "parse_xlsx_numpy",
+    "parse_xlsx_dataframe",
 ]
 
 
@@ -61,7 +65,7 @@ def parse_csv_dataframe(csv_text: str, skip_header: bool = True) -> "pd.DataFram
 
     Example::
 
-        df = csvpp.parse_csv_dataframe(csv_text)
+        df = tabx.parse_csv_dataframe(csv_text)
         # equivalent, but 3× slower:
         # df = pd.read_csv(io.StringIO(csv_text))
     """
@@ -75,5 +79,42 @@ def parse_csv_dataframe(csv_text: str, skip_header: bool = True) -> "pd.DataFram
         ) from exc
 
     arr, cols = parse_csv_numpy(csv_text, skip_header=skip_header)
+
+    return pd.DataFrame(arr, columns=cols)
+
+
+def parse_xlsx_dataframe(
+    file_path: str,
+    sheet_name: str = "",
+    skip_header: bool = True,
+) -> "pd.DataFrame":
+    """Parse an integer XLSX worksheet directly into a ``pd.DataFrame``.
+
+    Args:
+        file_path: Path to an ``.xlsx`` file.
+        sheet_name: Worksheet name. Empty string means the first sheet.
+        skip_header: When ``True`` (default), first row becomes column names.
+
+    Returns:
+        ``pd.DataFrame`` with ``int32`` columns.
+
+    Raises:
+        RuntimeError: On malformed XLSX, unsupported cell types, or parse errors.
+        ImportError: If ``pandas`` is not installed.
+    """
+    try:
+        import pandas as pd
+
+    except ImportError as exc:
+        raise ImportError(
+            "pandas is required for parse_xlsx_dataframe. "
+            "Install it with: pip install pandas"
+        ) from exc
+
+    arr, cols = parse_xlsx_numpy(
+        file_path=file_path,
+        sheet_name=sheet_name,
+        skip_header=skip_header,
+    )
 
     return pd.DataFrame(arr, columns=cols)

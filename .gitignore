@@ -27,8 +27,8 @@ share/python-wheels/
 MANIFEST
 
 # scikit-build-core editable install stub
-_csvpp*.pth
-csvpp.pth
+_tabx*.pth
+tabx.pth
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

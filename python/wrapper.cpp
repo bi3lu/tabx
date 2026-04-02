@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "parser.h"
+#include "xlsx_parser.h"
 
 namespace py = pybind11;
 
@@ -18,7 +19,7 @@ PYBIND11_MODULE(_core, module)
 
 	module.def(
 		"parse_csv_numbers",
-		&fast_parser::parse_csv_numbers,
+		&tabx::parse_csv_numbers,
 		py::arg("input"),
 		"Parse a single-row CSV string into a list of integers.\n\n"
 		"Args:\n"
@@ -33,7 +34,7 @@ PYBIND11_MODULE(_core, module)
 
 	module.def(
 		"sum_csv_numbers",
-		&fast_parser::sum_csv_numbers,
+		&tabx::sum_csv_numbers,
 		py::arg("input"),
 		"Return the sum of all integers in a single-row CSV string.\n\n"
 		"Args:\n"
@@ -48,7 +49,7 @@ PYBIND11_MODULE(_core, module)
 
 	module.def(
 		"parse_csv_flat",
-		&fast_parser::parse_csv_flat,
+		&tabx::parse_csv_flat,
 		py::arg("csv_text"),
 		py::arg("skip_header") = false,
 		"Parse every integer cell in a multi-row CSV string into a flat list.\n\n"
@@ -67,7 +68,7 @@ PYBIND11_MODULE(_core, module)
 
 	module.def(
 		"sum_csv_all",
-		&fast_parser::sum_csv_all,
+		&tabx::sum_csv_all,
 		py::arg("csv_text"),
 		py::arg("skip_header") = false,
 		"Sum every integer in a multi-row CSV string.\n\n"
@@ -87,7 +88,7 @@ PYBIND11_MODULE(_core, module)
 			std::vector<int32_t>     data;
 			std::vector<std::string> headers;
 
-			const fast_parser::CsvShape shape = fast_parser::parse_csv_into_buffer(
+			const tabx::CsvShape shape = tabx::parse_csv_into_buffer(
 				csv_text, skip_header, data, skip_header ? &headers : nullptr);
 
 			if (shape.rows == 0 || shape.cols == 0)
@@ -137,4 +138,85 @@ PYBIND11_MODULE(_core, module)
 		"Example:\n"
 		"    arr, cols = parse_csv_numpy(text, skip_header=True)\n"
 		"    df = pd.DataFrame(arr, columns=cols)"
-	);}
+	);
+
+	module.def(
+		"list_xlsx_sheets",
+		[](const std::string& file_path)
+		{
+			py::list out;
+			for (const auto& s : tabx::list_xlsx_sheets(file_path))
+			{
+				py::dict item;
+				item["name"] = py::str(s.name);
+				item["index"] = py::int_(static_cast<long long>(s.index));
+				out.append(item);
+			}
+			return out;
+		},
+		py::arg("file_path"),
+		"List worksheets in an XLSX workbook.\n\n"
+		"Returns:\n"
+		"    list[dict]: [{\"name\": str, \"index\": int}, ...]"
+	);
+
+	module.def(
+		"parse_xlsx_numpy",
+		[](const std::string& file_path, const std::string& sheet_name, bool skip_header) -> py::tuple
+		{
+			std::vector<int32_t>     data;
+			std::vector<std::string> headers;
+
+			const tabx::CsvShape shape = tabx::parse_xlsx_into_buffer(
+				file_path,
+				sheet_name,
+				skip_header,
+				data,
+				skip_header ? &headers : nullptr);
+
+			if (shape.rows == 0 || shape.cols == 0)
+			{
+				py::list empty;
+				
+				return py::make_tuple(
+					py::array_t<int32_t>(std::vector<py::ssize_t>{0, 0}),
+					empty);
+			}
+
+			auto* heap = new std::vector<int32_t>(std::move(data));
+			py::capsule owner(heap, [](void* p)
+			{
+				delete static_cast<std::vector<int32_t>*>(p);
+			});
+
+			py::array_t<int32_t> arr(
+				{static_cast<py::ssize_t>(shape.rows),
+				 static_cast<py::ssize_t>(shape.cols)},
+				{static_cast<py::ssize_t>(shape.cols * sizeof(int32_t)),
+				 static_cast<py::ssize_t>(sizeof(int32_t))},
+				heap->data(),
+				owner);
+
+			py::list col_names;
+
+			if (skip_header && !headers.empty())
+				for (auto& h : headers) col_names.append(py::str(h));
+
+			else
+				for (std::size_t i = 0; i < shape.cols; ++i)
+					col_names.append(py::int_(static_cast<long long>(i)));
+
+			return py::make_tuple(arr, col_names);
+		},
+		py::arg("file_path"),
+		py::arg("sheet_name") = "",
+		py::arg("skip_header") = true,
+		"Parse an integer XLSX worksheet into a zero-copy 2-D NumPy int32 array.\n\n"
+		"Args:\n"
+		"    file_path (str): Path to .xlsx file.\n"
+		"    sheet_name (str): Sheet to parse; empty string selects first sheet.\n"
+		"    skip_header (bool): If True, first row is treated as column names.\n\n"
+		"Returns:\n"
+		"    tuple[np.ndarray, list]: (array of shape (rows, cols), column names)."
+	);
+}
