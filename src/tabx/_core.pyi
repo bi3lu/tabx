@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, overload
+from typing import Any, Literal, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -94,7 +94,7 @@ def parse_csv_numpy(
 
     Example::
 
-        arr, cols = fast_parser_py.parse_csv_numpy(csv_text, skip_header=True)
+        arr, cols = tabx.parse_csv_numpy(csv_text, skip_header=True)
         df = pd.DataFrame(arr, columns=cols)
     """
     ...
@@ -104,3 +104,65 @@ def parse_csv_numpy(
     csv_text: str,
     skip_header: Literal[False] = ...,
 ) -> tuple[npt.NDArray[np.int32], list[int]]: ...
+@overload
+def parse_csv_numpy(
+    csv_text: str,
+    skip_header: bool,
+) -> tuple[npt.NDArray[np.int32], list[str] | list[int]]: ...
+def parse_csv_mixed(
+    csv_text: str,
+    skip_header: bool = ...,
+) -> tuple[list[Any], list[str] | list[int]]:
+    """Parse CSV into per-column typed arrays.
+
+    Each element of the returned column list is either a typed numpy array
+    (``int64``, ``float64``, ``bool``) or a Python list for mixed/object
+    columns.
+    """
+    ...
+
+def list_xlsx_sheets(file_path: str) -> list[dict[str, int | str]]:
+    """List worksheets in an XLSX workbook.
+
+    Returns:
+        A list like ``[{"name": "Sheet1", "index": 0}, ...]``.
+    """
+    ...
+
+@overload
+def parse_xlsx_numpy(
+    file_path: str,
+    sheet_name: str = ...,
+    skip_header: Literal[True] = ...,
+) -> tuple[npt.NDArray[np.int32], list[str]]: ...
+@overload
+def parse_xlsx_numpy(
+    file_path: str,
+    sheet_name: str = ...,
+    skip_header: Literal[False] = ...,
+) -> tuple[npt.NDArray[np.int32], list[int]]: ...
+@overload
+def parse_xlsx_numpy(
+    file_path: str,
+    sheet_name: str = ...,
+    skip_header: bool = ...,
+) -> tuple[npt.NDArray[np.int32], list[str] | list[int]]: ...
+
+# Column arrays returned by parse_xlsx_mixed may be typed numpy arrays or
+# Python object lists; Any captures both without requiring numpy-stubs overloads.
+def parse_xlsx_mixed(
+    file_path: str,
+    sheet_name: str = ...,
+    skip_header: bool = ...,
+) -> tuple[list[Any], list[str] | list[int]]:
+    """Parse an XLSX worksheet into per-column typed arrays.
+
+    Each element of the returned column list is a typed numpy array
+    (``int64``, ``float64``, or ``bool``) for uniform columns, or a Python
+    ``list`` for string/mixed columns.  Use ``parse_xlsx_dataframe`` to get
+    a ``pd.DataFrame`` directly.
+
+    Returns:
+        A tuple ``(column_arrays, column_names)``.
+    """
+    ...
