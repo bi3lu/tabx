@@ -1,4 +1,4 @@
-#include "parser.h"
+#include "csv_parser.h"
 
 #include <algorithm>
 #include <cctype>
@@ -141,6 +141,25 @@ inline std::vector<std::string_view> split_row_tokens(std::string_view line)
     }
 
     return tokens;
+}
+
+inline std::size_t count_csv_fields(std::string_view line) noexcept
+{
+    if (line.empty())
+        return 0;
+
+    return static_cast<std::size_t>(std::count(line.begin(), line.end(), ',')) + 1;
+}
+
+[[noreturn]] inline void throw_row_width_mismatch(
+    std::size_t row_index,
+    std::size_t expected_cols,
+    std::size_t actual_cols)
+{
+    throw std::invalid_argument(
+        "CSV row width mismatch at row " + std::to_string(row_index) +
+        ": expected " + std::to_string(expected_cols) +
+        " columns, got " + std::to_string(actual_cols));
 }
 
 inline bool iequals_ascii(std::string_view a, std::string_view b) noexcept
@@ -357,6 +376,7 @@ CsvShape parse_csv_into_buffer(
         if (is_first && skip_header)
         {
             is_first = false;
+            n_cols = count_csv_fields(line);
 
             if (header_out)
             {
@@ -380,12 +400,16 @@ CsvShape parse_csv_into_buffer(
         else if (!line.empty())
         {
             is_first = false;
+            const std::size_t row_cols = count_csv_fields(line);
 
-            if (n_rows == 0)
+            if (n_cols == 0)
             {
-                n_cols = 1;
-                for (char ch : line) if (ch == ',') ++n_cols;
+                n_cols = row_cols;
                 out.reserve(approx_rows * n_cols);
+            }
+            else if (row_cols != n_cols)
+            {
+                throw_row_width_mismatch(n_rows + 1, n_cols, row_cols);
             }
 
             std::size_t s = 0;
@@ -423,13 +447,20 @@ CsvShape parse_csv_into_buffer(
     return {n_rows, n_cols};
 }
 
-CsvMixedResult parse_csv_mixed(const std::string& csv_text, bool skip_header)
+CsvMixedResult parse_csv_mixed(
+    const std::string& csv_text,
+    bool               skip_header,
+    CsvShapeMode       shape_mode)
 {
     const std::string_view text(csv_text);
 
     std::vector<std::string> headers;
     std::vector<std::vector<CsvRawCell>> row_data;
     std::size_t max_cols = 0;
+    std::size_t expected_cols = 0;
+    std::size_t min_observed_cols = 0;
+    std::size_t max_observed_cols = 0;
+    std::size_t ragged_rows = 0;
 
     bool is_first = true;
     std::size_t line_start = 0;
@@ -466,6 +497,7 @@ CsvMixedResult parse_csv_mixed(const std::string& csv_text, bool skip_header)
                 headers.push_back(std::move(h));
             }
 
+            expected_cols = tokens.size();
             max_cols = std::max(max_cols, tokens.size());
             is_first = false;
 
@@ -477,7 +509,31 @@ CsvMixedResult parse_csv_mixed(const std::string& csv_text, bool skip_header)
         }
 
         is_first = false;
-        max_cols = std::max(max_cols, tokens.size());
+        const std::size_t row_cols = tokens.size();
+
+        if (expected_cols == 0)
+            expected_cols = row_cols;
+
+        if (row_data.empty())
+        {
+            min_observed_cols = row_cols;
+            max_observed_cols = row_cols;
+        }
+        else
+        {
+            min_observed_cols = std::min(min_observed_cols, row_cols);
+            max_observed_cols = std::max(max_observed_cols, row_cols);
+        }
+
+        if (row_cols != expected_cols)
+        {
+            ++ragged_rows;
+
+            if (shape_mode == CsvShapeMode::Strict)
+                throw_row_width_mismatch(row_data.size() + 1, expected_cols, row_cols);
+        }
+
+        max_cols = std::max(max_cols, row_cols);
 
         std::vector<CsvRawCell> row;
         row.reserve(tokens.size());
@@ -496,6 +552,10 @@ CsvMixedResult parse_csv_mixed(const std::string& csv_text, bool skip_header)
     result.rows = row_data.size();
     result.cols = max_cols;
     result.headers = std::move(headers);
+    result.shape_info.expected_cols = expected_cols;
+    result.shape_info.min_observed_cols = min_observed_cols;
+    result.shape_info.max_observed_cols = max_observed_cols;
+    result.shape_info.ragged_rows = ragged_rows;
 
     while (result.headers.size() < result.cols)
         result.headers.push_back("Column_" + std::to_string(result.headers.size()));

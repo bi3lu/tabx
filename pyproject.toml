@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "tabx"
 version = "0.1.0"
-description = "C++17 CSV integer parser — 3× faster CSV-to-DataFrame loading than pandas"
+description = "C++17 CSV/XLSX parser with NumPy and pandas DataFrame bridges"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.8"
@@ -34,7 +34,7 @@ Repository = "https://github.com/bi3lu/tabx"
 
 [project.optional-dependencies]
 benchmark = ["pandas>=1.5", "openpyxl>=3.1"]
-dev       = ["pandas>=1.5", "openpyxl>=3.1", "build", "twine", "mypy", "ruff", "numpy>=1.21"]
+dev = ["pandas>=1.5", "pandas-stubs>=2.2; python_version >= '3.9'", "openpyxl>=3.1", "build", "twine", "mypy", "ruff", "numpy>=1.21", "pytest>=8.0", "pytest-cov>=5.0", "black>=24.0", "isort>=5.13"]
 
 [tool.scikit-build]
 wheel.packages   = ["src/tabx"]
@@ -46,20 +46,40 @@ TABX_NATIVE = "ON"
 
 # ── Mypy ─────────────────────────────────────────────────────────────────────
 [tool.mypy]
-python_version      = "3.9"
-strict              = true
+python_version = "3.9"
+strict = true
 warn_unused_ignores = true
-files               = ["src", "examples", "benchmarks"]
+warn_unused_configs = false
+files = ["src", "examples", "benchmarks"]
+exclude = "(^|.*/)(build|tests|\\.venv|\\.mypy_cache|\\.git)/"
 
 [[tool.mypy.overrides]]
 module = "tabx._core"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["openpyxl"]
+ignore_missing_imports = true
+
 # ── Ruff ─────────────────────────────────────────────────────────────────────
 [tool.ruff]
 target-version = "py38"
-line-length    = 100
+line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+py_version = 38
+src_paths = ["src", "tests", "examples", "benchmarks"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --cov=tabx --cov-report=term-missing --cov-fail-under=85"
