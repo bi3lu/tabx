@@ -4,6 +4,7 @@ from typing import Any
 
 from ._core import list_xlsx_sheets as list_xlsx_sheets
 from ._core import parse_csv_flat as parse_csv_flat
+from ._core import parse_csv_mixed as parse_csv_mixed
 from ._core import parse_csv_numbers as parse_csv_numbers
 from ._core import parse_csv_numpy as parse_csv_numpy
 from ._core import parse_xlsx_mixed as parse_xlsx_mixed

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "parser.h"  // CsvShape
+#include "csv_parser.h"  // CsvShape
 
 namespace tabx
 {

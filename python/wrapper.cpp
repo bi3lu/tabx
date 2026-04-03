@@ -6,7 +6,7 @@
 #include <cmath>
 #include <limits>
 
-#include "parser.h"
+#include "csv_parser.h"
 #include "xlsx_parser.h"
 
 namespace py = pybind11;
@@ -14,10 +14,9 @@ namespace py = pybind11;
 PYBIND11_MODULE(_core, module)
 {
 	module.doc() =
-		"Native C++17 CSV integer parser exposed via pybind11.\n\n"
-		"All parsing functions accept only integer fields.  Whitespace\n"
-		"surrounding each field is ignored.  Non-integer fields raise\n"
-		"ValueError at runtime.";
+		"Native C++17 CSV/XLSX parser exposed via pybind11.\n\n"
+		"Includes both integer fast paths (NumPy int32) and mixed-type\n"
+		"paths for pandas-like DataFrame construction.";
 
 	module.def(
 		"parse_csv_numbers",
