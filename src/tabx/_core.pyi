@@ -5,6 +5,8 @@ from typing import Any, Literal, overload
 import numpy as np
 import numpy.typing as npt
 
+CsvShapeMode = Literal["strict", "permissive"]
+
 def parse_csv_numbers(input: str) -> list[int]:
     """Parse a single-row CSV string into a list of integers.
 
@@ -112,12 +114,15 @@ def parse_csv_numpy(
 def parse_csv_mixed(
     csv_text: str,
     skip_header: bool = ...,
+    shape_mode: CsvShapeMode = ...,
+    warn_on_ragged: bool = ...,
 ) -> tuple[list[Any], list[str] | list[int]]:
     """Parse CSV into per-column typed arrays.
 
     Each element of the returned column list is either a typed numpy array
     (``int64``, ``float64``, ``bool``) or a Python list for mixed/object
-    columns.
+    columns. When ``shape_mode='permissive'``, shorter rows are padded with
+    null-like values and wider rows extend the inferred schema.
     """
     ...
 

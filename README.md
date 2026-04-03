@@ -28,8 +28,10 @@ The project demonstrates end-to-end native extension development: a zero-depende
 ```
 tabx/
 ├── cpp/
-│   ├── parser.h            # Public API with Doxygen-style comments
-│   └── parser.cpp          # Core parsing logic
+│   ├── csv_parser.h        # CSV public API with Doxygen-style comments
+│   ├── csv_parser.cpp      # CSV parsing logic
+│   ├── xlsx_parser.h       # XLSX public API
+│   └── xlsx_parser.cpp     # XLSX parsing logic
 ├── python/
 │   └── wrapper.cpp         # pybind11 module definition (_core)
 ├── src/
@@ -258,7 +260,7 @@ df = tabx.parse_xlsx_dataframe("sales_report.xlsx", sheet_name="Sales")
 ### C++ API
 
 ```cpp
-#include "parser.h"
+#include "csv_parser.h"
 
 // Single-row
 std::vector<int> values = tabx::parse_csv_numbers("1, 2, 3"); // {1, 2, 3}

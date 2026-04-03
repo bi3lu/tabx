@@ -195,8 +195,7 @@ def _verify(df_pandas: pd.DataFrame, df_tabx: pd.DataFrame) -> None:
 def _verify_mixed(df_pandas: pd.DataFrame, df_tabx: pd.DataFrame) -> None:
     """Raise AssertionError if mixed-type XLSX results differ."""
     assert list(df_pandas.columns) == list(df_tabx.columns), (
-        f"Column mismatch: pandas={list(df_pandas.columns)} "
-        f"tabx={list(df_tabx.columns)}"
+        f"Column mismatch: pandas={list(df_pandas.columns)} " f"tabx={list(df_tabx.columns)}"
     )
 
     pd.testing.assert_frame_equal(
@@ -245,9 +244,7 @@ def _run_single_benchmark(
     speedup = timings["pandas"] / timings["tabx (C++)"]
     print(f"\ntabx is {speedup:.1f}× faster than pandas ({title})")
     print(f"Output shape: {results[1].shape}")
-    print(
-        "Output dtypes:", ", ".join(str(dtype) for dtype in results[1].dtypes.tolist())
-    )
+    print("Output dtypes:", ", ".join(str(dtype) for dtype in results[1].dtypes.tolist()))
 
 
 # Entry point:
@@ -318,9 +315,7 @@ def _parse_args() -> argparse.Namespace:
         description="CSV/XLSX → DataFrame benchmark: pandas vs tabx.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument(
-        "--rows", type=int, default=200_000, metavar="N", help="Number of data rows."
-    )
+    p.add_argument("--rows", type=int, default=200_000, metavar="N", help="Number of data rows.")
     p.add_argument(
         "--cols",
         type=int,
