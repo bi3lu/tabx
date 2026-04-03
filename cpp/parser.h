@@ -54,6 +54,40 @@ long long sum_csv_all(const std::string& csv_text, bool skip_header = false);
 struct CsvShape { std::size_t rows; std::size_t cols; };
 
 /**
+ * @brief Classification of one CSV cell.
+ */
+enum class CsvCellKind : uint8_t
+{
+    Empty   = 0,
+    Integer = 1,
+    Float   = 2,
+    Boolean = 3,
+    String  = 4,
+};
+
+/**
+ * @brief One typed CSV cell value.
+ */
+struct CsvRawCell
+{
+    CsvCellKind  kind = CsvCellKind::Empty;
+    double       dval = 0.0;
+    std::string  sval;
+    bool         bval = false;
+};
+
+/**
+ * @brief Full mixed-type result for CSV parsing.
+ */
+struct CsvMixedResult
+{
+    std::vector<std::string> headers;
+    std::size_t              rows = 0;
+    std::size_t              cols = 0;
+    std::vector<CsvRawCell>  cells;
+};
+
+/**
  * @brief Parse all integer cells into a caller-supplied flat row-major buffer.
  *
  * Performs one fast newline-count scan to pre-allocate the buffer, then one
@@ -73,5 +107,20 @@ CsvShape parse_csv_into_buffer(
     std::vector<int32_t>&     out,
     std::vector<std::string>* header_out = nullptr
 );
+
+/**
+ * @brief Parse a CSV text into per-cell typed values.
+ *
+ * Type inference is performed per token:
+ * - empty token           -> Empty
+ * - true / false          -> Boolean
+ * - integer literal       -> Integer
+ * - floating literal      -> Float
+ * - otherwise             -> String
+ *
+ * Rows are split by '\n' and fields by ',' (same simple CSV model as the
+ * integer parser path; quoted CSV escapes are not interpreted).
+ */
+CsvMixedResult parse_csv_mixed(const std::string& csv_text, bool skip_header = true);
 
 }  // namespace tabx
