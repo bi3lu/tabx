@@ -143,6 +143,170 @@ PYBIND11_MODULE(_core, module)
 	);
 
 	module.def(
+		"parse_csv_mixed",
+		[](const std::string& csv_text, bool skip_header) -> py::tuple
+		{
+			tabx::CsvMixedResult res = tabx::parse_csv_mixed(csv_text, skip_header);
+
+			const std::size_t R = res.rows;
+			const std::size_t C = res.cols;
+			constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+
+			py::list col_arrays;
+			py::list col_names;
+
+			if (!res.headers.empty())
+				for (const auto& h : res.headers)
+					col_names.append(py::str(h));
+					
+			else
+				for (std::size_t c = 0; c < C; ++c)
+					col_names.append(py::int_(static_cast<long long>(c)));
+
+			for (std::size_t c = 0; c < C; ++c)
+			{
+				bool has_empty = false;
+				bool has_int = false;
+				bool has_float = false;
+				bool has_bool = false;
+				bool has_string = false;
+
+				for (std::size_t r = 0; r < R; ++r)
+				{
+					switch (res.cells[r * C + c].kind)
+					{
+						case tabx::CsvCellKind::Empty: has_empty = true; break;
+						case tabx::CsvCellKind::Integer: has_int = true; break;
+						case tabx::CsvCellKind::Float: has_float = true; break;
+						case tabx::CsvCellKind::Boolean: has_bool = true; break;
+						case tabx::CsvCellKind::String: has_string = true; break;
+					}
+				}
+
+				if (has_string || (has_bool && (has_int || has_float)))
+				{
+					py::list lst;
+					for (std::size_t r = 0; r < R; ++r)
+					{
+						const auto& cell = res.cells[r * C + c];
+
+						switch (cell.kind)
+						{
+							case tabx::CsvCellKind::Empty:
+								lst.append(py::none()); break;
+							case tabx::CsvCellKind::Integer:
+								lst.append(py::int_(static_cast<long long>(
+									static_cast<std::int64_t>(cell.dval)))); break;
+							case tabx::CsvCellKind::Float:
+								lst.append(py::float_(cell.dval)); break;
+							case tabx::CsvCellKind::Boolean:
+								lst.append(py::bool_(cell.bval)); break;
+							case tabx::CsvCellKind::String:
+								lst.append(py::str(cell.sval)); break;
+						}
+					}
+					col_arrays.append(lst);
+				}
+				else if (has_bool && !has_int && !has_float)
+				{
+					if (has_empty)
+					{
+						py::list lst;
+
+						for (std::size_t r = 0; r < R; ++r)
+						{
+							const auto& cell = res.cells[r * C + c];
+
+							if (cell.kind == tabx::CsvCellKind::Boolean)
+								lst.append(py::bool_(cell.bval));
+
+							else
+								lst.append(py::none());
+						}
+						col_arrays.append(lst);
+					}
+					else
+					{
+						auto* buf = new std::vector<std::uint8_t>(R);
+
+						for (std::size_t r = 0; r < R; ++r)
+							(*buf)[r] = res.cells[r * C + c].bval ? 1u : 0u;
+
+						py::capsule owner(buf, [](void* p)
+						{
+							delete static_cast<std::vector<std::uint8_t>*>(p);
+						});
+
+						col_arrays.append(py::array(
+							py::dtype("bool"),
+							{static_cast<py::ssize_t>(R)},
+							{static_cast<py::ssize_t>(1)},
+							buf->data(), owner));
+					}
+				}
+				else if ((has_int || has_float) && !has_bool && !has_string)
+				{
+					if (!has_empty && !has_float)
+					{
+						auto* buf = new std::vector<std::int64_t>(R);
+
+						for (std::size_t r = 0; r < R; ++r)
+							(*buf)[r] = static_cast<std::int64_t>(res.cells[r * C + c].dval);
+
+						py::capsule owner(buf, [](void* p)
+						{
+							delete static_cast<std::vector<std::int64_t>*>(p);
+						});
+
+						py::array_t<std::int64_t> arr(
+							{static_cast<py::ssize_t>(R)},
+							{static_cast<py::ssize_t>(sizeof(std::int64_t))},
+							buf->data(), owner);
+						col_arrays.append(arr);
+					}
+					else
+					{
+						auto* buf = new std::vector<double>(R, kNaN);
+
+						for (std::size_t r = 0; r < R; ++r)
+						{
+							const auto& cell = res.cells[r * C + c];
+							if (cell.kind == tabx::CsvCellKind::Integer ||
+								cell.kind == tabx::CsvCellKind::Float)
+								(*buf)[r] = cell.dval;
+						}
+
+						py::capsule owner(buf, [](void* p)
+						{
+							delete static_cast<std::vector<double>*>(p);
+						});
+
+						py::array_t<double> arr(
+							{static_cast<py::ssize_t>(R)},
+							{static_cast<py::ssize_t>(sizeof(double))},
+							buf->data(), owner);
+						col_arrays.append(arr);
+					}
+				}
+				else
+				{
+					py::list lst;
+					for (std::size_t r = 0; r < R; ++r)
+						lst.append(py::none());
+					col_arrays.append(lst);
+				}
+			}
+
+			return py::make_tuple(col_arrays, col_names);
+		},
+		py::arg("csv_text"),
+		py::arg("skip_header") = true,
+		"Parse CSV into per-column typed arrays (pandas-like inference).\n\n"
+		"Returns:\n"
+		"    tuple[list, list]: (column_arrays, column_names)."
+	);
+
+	module.def(
 		"list_xlsx_sheets",
 		[](const std::string& file_path)
 		{
@@ -274,6 +438,7 @@ PYBIND11_MODULE(_core, module)
 					for (std::size_t r = 0; r < R; ++r)
 					{
 						const auto& cell = res.cells[r * C + c];
+
 						switch (cell.kind)
 						{
 							case tabx::XlsxCellKind::Empty:
