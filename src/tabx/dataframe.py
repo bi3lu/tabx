@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import importlib
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import pandas as pd
+
+
+CsvShapeMode = Literal["strict", "permissive"]
 
 
 def _require_pandas() -> "type[pd.DataFrame]":
@@ -24,11 +27,21 @@ def _core_module() -> Any:
     return importlib.import_module("tabx._core")
 
 
-def parse_csv_dataframe(csv_text: str, skip_header: bool = True) -> "pd.DataFrame":
+def parse_csv_dataframe(
+    csv_text: str,
+    skip_header: bool = True,
+    shape_mode: CsvShapeMode = "permissive",
+    warn_on_ragged: bool = False,
+) -> "pd.DataFrame":
     """Parse CSV text directly into a ``pd.DataFrame`` with inferred column types."""
     dataframe_type = _require_pandas()
     core = _core_module()
-    columns, col_names = core.parse_csv_mixed(csv_text, skip_header=skip_header)
+    columns, col_names = core.parse_csv_mixed(
+        csv_text,
+        skip_header=skip_header,
+        shape_mode=shape_mode,
+        warn_on_ragged=warn_on_ragged,
+    )
     return dataframe_type(dict(zip(col_names, columns)))
 
 

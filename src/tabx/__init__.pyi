@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from ._core import list_xlsx_sheets as list_xlsx_sheets
 from ._core import parse_csv_flat as parse_csv_flat
@@ -13,6 +13,7 @@ from ._core import sum_csv_all as sum_csv_all
 from ._core import sum_csv_numbers as sum_csv_numbers
 
 DataFrameLike = Any
+CsvShapeMode = Literal["strict", "permissive"]
 
 __version__: str
 __all__: list[str]
@@ -20,6 +21,8 @@ __all__: list[str]
 def parse_csv_dataframe(
     csv_text: str,
     skip_header: bool = ...,
+    shape_mode: CsvShapeMode = ...,
+    warn_on_ragged: bool = ...,
 ) -> DataFrameLike:
     """Parse CSV text directly into a ``pd.DataFrame`` with inferred column types.
 
@@ -34,6 +37,10 @@ def parse_csv_dataframe(
         csv_text: Full CSV text with rows separated by ``'\\n'``.
         skip_header: When ``True`` (default), the first row is used as
             column names.  When ``False``, columns are numbered 0, 1, 2, …
+        shape_mode: ``"strict"`` rejects ragged rows, ``"permissive"`` pads
+            missing cells with null-like values.
+        warn_on_ragged: Emit ``RuntimeWarning`` when permissive mode encounters
+            inconsistent row widths.
 
     Returns:
         A ``pd.DataFrame`` with per-column inferred dtypes.

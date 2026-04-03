@@ -5,11 +5,52 @@
 #include <cstdint>
 #include <cmath>
 #include <limits>
+#include <string>
 
 #include "csv_parser.h"
 #include "xlsx_parser.h"
 
 namespace py = pybind11;
+
+namespace
+{
+
+tabx::CsvShapeMode parse_csv_shape_mode(const std::string& shape_mode)
+{
+	if (shape_mode == "strict")
+		return tabx::CsvShapeMode::Strict;
+
+	if (shape_mode == "permissive")
+		return tabx::CsvShapeMode::Permissive;
+
+	throw py::value_error("shape_mode must be either 'strict' or 'permissive'");
+}
+
+void maybe_warn_about_ragged_csv(const tabx::CsvShapeInfo& shape_info)
+{
+	if (shape_info.ragged_rows == 0)
+		return;
+
+	std::string message =
+		"Permissive CSV shape mode detected " +
+		std::to_string(shape_info.ragged_rows) +
+		" ragged row(s); expected " +
+		std::to_string(shape_info.expected_cols) +
+		" column(s), observed between " +
+		std::to_string(shape_info.min_observed_cols) +
+		" and " +
+		std::to_string(shape_info.max_observed_cols) +
+		". Missing cells were padded with nulls.";
+
+	if (shape_info.max_observed_cols > shape_info.expected_cols)
+		message += " Wider rows expanded the inferred schema.";
+
+	py::module_::import("warnings").attr("warn")(
+		py::str(message),
+		py::module_::import("builtins").attr("RuntimeWarning"));
+}
+
+}  // namespace
 
 PYBIND11_MODULE(_core, module)
 {
@@ -143,9 +184,18 @@ PYBIND11_MODULE(_core, module)
 
 	module.def(
 		"parse_csv_mixed",
-		[](const std::string& csv_text, bool skip_header) -> py::tuple
+		[](const std::string& csv_text,
+		   bool skip_header,
+		   const std::string& shape_mode,
+		   bool warn_on_ragged) -> py::tuple
 		{
-			tabx::CsvMixedResult res = tabx::parse_csv_mixed(csv_text, skip_header);
+			tabx::CsvMixedResult res = tabx::parse_csv_mixed(
+				csv_text,
+				skip_header,
+				parse_csv_shape_mode(shape_mode));
+
+			if (warn_on_ragged)
+				maybe_warn_about_ragged_csv(res.shape_info);
 
 			const std::size_t R = res.rows;
 			const std::size_t C = res.cols;
@@ -300,7 +350,16 @@ PYBIND11_MODULE(_core, module)
 		},
 		py::arg("csv_text"),
 		py::arg("skip_header") = true,
+		py::arg("shape_mode") = "permissive",
+		py::arg("warn_on_ragged") = false,
 		"Parse CSV into per-column typed arrays (pandas-like inference).\n\n"
+		"Args:\n"
+		"    csv_text (str): Full CSV text with rows separated by '\\n'.\n"
+		"    skip_header (bool): If True, treat the first row as column names.\n"
+		"    shape_mode (str): 'strict' rejects ragged rows, 'permissive' pads\n"
+		"        missing cells with nulls and preserves wider rows.\n"
+		"    warn_on_ragged (bool): Emit a RuntimeWarning when permissive mode\n"
+		"        encounters inconsistent row widths.\n\n"
 		"Returns:\n"
 		"    tuple[list, list]: (column_arrays, column_names)."
 	);

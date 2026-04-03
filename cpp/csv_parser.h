@@ -54,6 +54,26 @@ long long sum_csv_all(const std::string& csv_text, bool skip_header = false);
 struct CsvShape { std::size_t rows; std::size_t cols; };
 
 /**
+ * @brief How ragged CSV rows should be handled.
+ */
+enum class CsvShapeMode : uint8_t
+{
+    Strict     = 0,
+    Permissive = 1,
+};
+
+/**
+ * @brief Summary of observed CSV row-width inconsistencies.
+ */
+struct CsvShapeInfo
+{
+    std::size_t expected_cols     = 0;
+    std::size_t min_observed_cols = 0;
+    std::size_t max_observed_cols = 0;
+    std::size_t ragged_rows       = 0;
+};
+
+/**
  * @brief Classification of one CSV cell.
  */
 enum class CsvCellKind : uint8_t
@@ -85,6 +105,7 @@ struct CsvMixedResult
     std::size_t              rows = 0;
     std::size_t              cols = 0;
     std::vector<CsvRawCell>  cells;
+    CsvShapeInfo             shape_info;
 };
 
 /**
@@ -121,6 +142,10 @@ CsvShape parse_csv_into_buffer(
  * Rows are split by '\n' and fields by ',' (same simple CSV model as the
  * integer parser path; quoted CSV escapes are not interpreted).
  */
-CsvMixedResult parse_csv_mixed(const std::string& csv_text, bool skip_header = true);
+CsvMixedResult parse_csv_mixed(
+    const std::string& csv_text,
+    bool               skip_header = true,
+    CsvShapeMode       shape_mode = CsvShapeMode::Permissive
+);
 
 }  // namespace tabx

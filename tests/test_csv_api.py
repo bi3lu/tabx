@@ -84,3 +84,38 @@ def test_parse_csv_dataframe_ragged_rows_fill_missing_with_null() -> None:
         }
     )
     pdt.assert_frame_equal(result, expected, check_dtype=False)
+
+
+def test_parse_csv_dataframe_strict_mode_rejects_ragged_rows() -> None:
+    csv_text = "a,b,c\n1,2,3\n4,5"
+
+    with pytest.raises(ValueError, match="CSV row width mismatch"):
+        tabx.parse_csv_dataframe(csv_text, skip_header=True, shape_mode="strict")
+
+
+def test_parse_csv_dataframe_permissive_mode_warns_on_ragged_rows() -> None:
+    csv_text = "a,b,c\n1,2,3\n4,5"
+
+    with pytest.warns(RuntimeWarning, match="Permissive CSV shape mode detected"):
+        result = tabx.parse_csv_dataframe(
+            csv_text,
+            skip_header=True,
+            shape_mode="permissive",
+            warn_on_ragged=True,
+        )
+
+    expected = pd.DataFrame(
+        {
+            "a": [1, 4],
+            "b": [2, 5],
+            "c": [3.0, np.nan],
+        }
+    )
+    pdt.assert_frame_equal(result, expected, check_dtype=False)
+
+
+def test_parse_csv_numpy_rejects_ragged_rows() -> None:
+    csv_text = "id,qty\n1,2\n3"
+
+    with pytest.raises(ValueError, match="CSV row width mismatch"):
+        tabx.parse_csv_numpy(csv_text, skip_header=True)
