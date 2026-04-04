@@ -101,7 +101,8 @@ def _apply_usecols(
             if keep:
                 selected.append(name)
 
-        return cast("pd.DataFrame", df.loc[:, selected])
+        callable_selected_df: "pd.DataFrame" = df.loc[:, selected]
+        return callable_selected_df
 
     if not usecols:
         return df
@@ -115,7 +116,8 @@ def _apply_usecols(
                 "usecols columns not found: " f"{missing}. Available columns: {available}"
             )
 
-        return cast("pd.DataFrame", df.loc[:, requested])
+        named_selected_df: "pd.DataFrame" = df.loc[:, requested]
+        return named_selected_df
 
     if all(isinstance(c, int) for c in usecols):
         positions = cast(list[int], usecols)
@@ -126,7 +128,8 @@ def _apply_usecols(
         if max_pos >= len(df.columns):
             raise ValueError(f"usecols index out of range: {max_pos}")
         cols = [df.columns[i] for i in positions]
-        return cast("pd.DataFrame", df.loc[:, cols])
+        positional_selected_df: "pd.DataFrame" = df.loc[:, cols]
+        return positional_selected_df
 
     raise ValueError("usecols must contain only str or only int")
 
@@ -150,7 +153,8 @@ def _apply_na_values(
             if str(series.dtype) in {"object", "string", "str"}:
                 out[col] = series.where(~series.isin(tokens))
 
-        return cast("pd.DataFrame", out)
+        dict_na_df: "pd.DataFrame" = out
+        return dict_na_df
 
     tokens = {na_values} if isinstance(na_values, str) else set(na_values)
     if not tokens:
@@ -161,7 +165,8 @@ def _apply_na_values(
         if str(series.dtype) in {"object", "string", "str"}:
             out[col] = series.where(~series.isin(tokens))
 
-    return cast("pd.DataFrame", out)
+    global_na_df: "pd.DataFrame" = out
+    return global_na_df
 
 
 def parse_csv_dataframe(
