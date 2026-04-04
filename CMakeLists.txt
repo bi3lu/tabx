@@ -14,7 +14,7 @@ option(TABX_NATIVE
 )
 
 add_library(tabx STATIC
-    cpp/parser.cpp
+    cpp/csv_parser.cpp
     cpp/xlsx_parser.cpp
 )
 

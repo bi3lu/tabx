@@ -5,6 +5,8 @@ from typing import Any, Literal, overload
 import numpy as np
 import numpy.typing as npt
 
+CsvShapeMode = Literal["strict", "permissive"]
+
 def parse_csv_numbers(input: str) -> list[int]:
     """Parse a single-row CSV string into a list of integers.
 
@@ -112,12 +114,35 @@ def parse_csv_numpy(
 def parse_csv_mixed(
     csv_text: str,
     skip_header: bool = ...,
+    shape_mode: CsvShapeMode = ...,
+    warn_on_ragged: bool = ...,
+    delimiter: str = ...,
+    quote: str = ...,
+    trim_whitespace: bool = ...,
+    schema: list[str] | None = ...,
 ) -> tuple[list[Any], list[str] | list[int]]:
-    """Parse CSV into per-column typed arrays.
+    """Parse CSV into per-column typed arrays (RFC 4180 compliant).
 
     Each element of the returned column list is either a typed numpy array
     (``int64``, ``float64``, ``bool``) or a Python list for mixed/object
-    columns.
+    columns.  Quoted fields, embedded newlines and escaped double-quotes
+    (``""``) are all handled correctly.
+
+    Args:
+        csv_text: Full CSV text.  Line endings may be LF or CRLF.
+        skip_header: When ``True`` (default), the first row is used as
+            column names.
+        shape_mode: ``"strict"`` rejects ragged rows; ``"permissive"`` pads
+            missing cells with null-like values.
+        warn_on_ragged: Emit ``RuntimeWarning`` when permissive mode
+            encounters inconsistent row widths.
+        delimiter: Single-character field separator.  Defaults to ``','``.
+        quote: Single-character quoting character.  Defaults to ``'"'``.
+        trim_whitespace: Strip leading/trailing ASCII whitespace from
+            unquoted fields.  Quoted field content is never trimmed.
+            Defaults to ``True``.
+        schema: Optional fixed column schema for strict fast parsing.
+            Allowed names: ``int``, ``float``, ``bool``, ``string``.
     """
     ...
 
