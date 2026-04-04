@@ -190,6 +190,27 @@ This is the intended CSV usage model:
 - output is a normal `pd.DataFrame`
 - filtering, joins, groupby, and export are done with pandas
 
+### Notebook-friendly file API
+
+For daily notebook work you can parse directly from a file path:
+
+```python
+import tabx
+
+df = tabx.parse_csv_file_dataframe(
+  "data/sales.csv",
+  usecols=lambda c: c in {"order_id", "region", "comment"},
+  na_values={"comment": ["NA", "NULL"]},
+  nrows=10000,
+)
+```
+
+Notes:
+
+- `usecols` accepts `list[str]`, `list[int]`, or a callable selector
+- `na_values` accepts either global values (`"NA"`, `["NA", "NULL"]`) or per-column mapping (`{"comment": ["NA"]}`)
+- `nrows` applies a row limit after parsing
+
 ### XLSX → DataFrame
 
 ```python

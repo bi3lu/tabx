@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from ._core import list_xlsx_sheets as list_xlsx_sheets
 from ._core import parse_csv_flat as parse_csv_flat
@@ -15,6 +15,9 @@ from ._core import sum_csv_numbers as sum_csv_numbers
 DataFrameLike = Any
 CsvShapeMode = Literal["strict", "permissive"]
 CsvEngineMode = Literal["auto", "infer", "int-fast", "schema"]
+CsvUseCols = list[str] | list[int] | Callable[[object], bool]
+CsvNaValuesScalar = str | list[str]
+CsvNaValues = CsvNaValuesScalar | dict[str, CsvNaValuesScalar]
 
 __version__: str
 __all__: list[str]
@@ -29,6 +32,9 @@ def parse_csv_dataframe(
     trim_whitespace: bool = ...,
     schema: list[str] | None = ...,
     engine: CsvEngineMode = ...,
+    usecols: CsvUseCols | None = ...,
+    nrows: int | None = ...,
+    na_values: CsvNaValues | None = ...,
 ) -> DataFrameLike:
     """Parse CSV text directly into a ``pd.DataFrame`` with inferred column types.
 
@@ -72,6 +78,28 @@ def parse_csv_dataframe(
     Raises:
         ImportError: If ``pandas`` is not installed.
         ValueError: If ``delimiter`` or ``quote`` is not a single character.
+    """
+    ...
+
+def parse_csv_file_dataframe(
+    file_path: str,
+    skip_header: bool = ...,
+    shape_mode: CsvShapeMode = ...,
+    warn_on_ragged: bool = ...,
+    delimiter: str = ...,
+    quote: str = ...,
+    trim_whitespace: bool = ...,
+    schema: list[str] | None = ...,
+    engine: CsvEngineMode = ...,
+    encoding: str = ...,
+    usecols: CsvUseCols | None = ...,
+    nrows: int | None = ...,
+    na_values: CsvNaValues | None = ...,
+) -> DataFrameLike:
+    """Parse CSV file directly into a ``pd.DataFrame``.
+
+    This is a notebook-friendly wrapper around ``parse_csv_dataframe`` that
+    reads text from ``file_path`` and applies the same parsing options.
     """
     ...
 
