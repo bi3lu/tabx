@@ -15,11 +15,12 @@ The project demonstrates end-to-end native extension development: a zero-depende
 - **pybind11** bindings compiled as a native `.so` / `.pyd` extension module
 - **CMake** build system — pybind11 is fetched automatically via `FetchContent`
 - **Typed CSV DataFrame path** — per-column inference for `int`, `float`, `string`, `bool`, and mixed columns
+- **RFC 4180 CSV support** — quoted commas/newlines, escaped quotes, configurable delimiter/quote
 - **Fast CSV integer path** — zero-copy NumPy `int32` via `parse_csv_numpy` for numeric-only workloads
 - **Typed XLSX DataFrame path** — per-column inference for `int`, `float`, `string`, `bool`, and mixed columns
 - **Allman style** throughout all C++ sources
 - **Type stubs** (`.pyi`) for IDE auto-completion and static analysis
-- **Benchmark suite** — head-to-head CSV/XLSX → `pd.DataFrame` comparisons against pandas
+- **Benchmark suite** — head-to-head CSV/XLSX -> `pd.DataFrame` comparisons against pandas, JSON artifacts, and regression thresholds
 
 ---
 
@@ -43,7 +44,11 @@ tabx/
 ├── examples/
 │   └── example.py          # Quick usage demo
 ├── benchmarks/
-│   └── benchmark.py        # pandas vs tabx benchmark (CSV + XLSX)
+│   ├── benchmark.py                # pandas vs tabx benchmark runner (CSV + XLSX)
+│   ├── check_regressions.py        # minimum ratio gates for CI
+│   ├── compare_benchmark_stages.py # baseline vs candidate JSON comparison
+│   ├── profile_hotspots.py         # cProfile -> hotspot text report
+│   └── fetch_public_datasets.py    # optional public CSV download helper
 ├── pyproject.toml          # Build config (scikit-build-core + mypy + ruff)
 ├── CMakeLists.txt
 ├── requirements-benchmark.txt
@@ -286,6 +291,11 @@ Both backends produce an identical `pd.DataFrame`. The benchmark verifies shape 
 ```bash
 python benchmarks/benchmark.py                                  # default: both formats
 python benchmarks/benchmark.py --format csv                     # CSV only
+python benchmarks/benchmark.py --format csv-mixed               # realistic mixed CSV
+python benchmarks/benchmark.py --format csv-wide-sparse         # null-heavy wide CSV
+python benchmarks/benchmark.py --format csv-quoted              # RFC 4180 quoted-heavy CSV
+python benchmarks/benchmark.py --format csv-all                 # all CSV scenarios
+python benchmarks/benchmark.py --format csv-external --input benchmarks/public_data/flights-200k.csv
 python benchmarks/benchmark.py --format xlsx                    # XLSX only
 python benchmarks/benchmark.py --format xlsx-mixed              # XLSX mixed types
 python benchmarks/benchmark.py --format both --rows 500000 --cols 8 --iterations 20
@@ -293,32 +303,57 @@ python benchmarks/benchmark.py --format both --rows 500000 --cols 8 --iterations
 
 `--format` options:
 
-- `csv`  — `pandas.read_csv` vs `tabx.parse_csv_dataframe`
-- `xlsx` — `pandas.read_excel` vs `tabx.parse_xlsx_dataframe`
-- `xlsx-mixed` — mixed-type XLSX: `pandas.read_excel` vs `tabx.parse_xlsx_dataframe`
-- `both` — runs CSV and XLSX sequentially
+- `csv` — integer-only CSV baseline
+- `csv-mixed` — realistic `int/float/bool/string/null` mix
+- `csv-wide-sparse` — wide CSV with ~60% empty cells
+- `csv-quoted` — RFC 4180 quoting stress test
+- `csv-external` — benchmark a real CSV file from `--input`
+- `csv-all` — runs integer + mixed + wide-sparse + quoted CSV
+- `xlsx` — integer XLSX
+- `xlsx-mixed` — mixed-type XLSX
+- `both` — integer CSV + integer XLSX
 
 `xlsx-mixed` ignores `--cols` and always generates a 5-column mixed schema:
 `int`, `float?`, `string`, `bool`, `mixed`.
 
-### Example Results — XLSX MIXED, 2 000 rows × 5 mixed-type columns, 2 iterations
+### Example Results — CSV benchmarks (100 000 rows, 5 iterations)
 
 ```
-Dataset:    2,000 rows × 5 mixed-type columns (int, float?, string, bool, mixed)
-Iterations: 2 per method
+Dataset:    100,000 rows × 6 columns (id int, amount int, price float?, active bool, category str, score float?)
+Iterations: 5 per method
 
-=== XLSX MIXED ===
-  pandas                   ...     36.83 ms
-  tabx (C++)               ...      4.85 ms
+=== CSV — mixed realistic (int · float · bool · string · nulls) ===
+  pandas                   ...     21.81 ms
+  tabx (C++)               ...     25.19 ms
 
 Method          Avg time    vs fastest
 ────────────────────────────────────────
-tabx (C++)        4.85 ms         1.00×  ← fastest
-pandas           36.83 ms         7.59×
+pandas           21.81 ms         1.00×  ← fastest
+tabx (C++)       25.19 ms         1.15×
 
-tabx is 7.6× faster than pandas (XLSX MIXED)
-Output shape: (2000, 5)
-Output dtypes: int64, float64, str, bool, object
+tabx is 1.2× slower than pandas (CSV — mixed realistic)
+Output shape: (100000, 6)
+Output dtypes: int64, int64, float64, bool, str, float64
+
+=== CSV — RFC 4180 quoted-heavy ("Last, First" · escaped "" · ) ===
+  pandas                   ...     32.21 ms
+  tabx (C++)               ...     27.69 ms
+
+Method          Avg time    vs fastest
+────────────────────────────────────────
+tabx (C++)       27.69 ms         1.00×  ← fastest
+pandas           32.21 ms         1.16×
+
+tabx is 1.2× faster than pandas (CSV — RFC 4180 quoted-heavy)
+Output shape: (100000, 5)
+Output dtypes: int64, str, str, int64, str
+```
+
+Benchmark output can also be exported to JSON for CI checks and stage comparisons:
+
+```bash
+python benchmarks/benchmark.py --format csv-all --rows 100000 --iterations 5 --json-out benchmark-results/csv-all.json
+python benchmarks/check_regressions.py benchmark-results/csv-all.json
 ```
 
 ### Why tabx wins
@@ -328,9 +363,9 @@ For CSV:
 | Step | `pandas.read_csv` | `tabx` |
 |---|---|---|
 | Input handling | `io.StringIO(text)` — heap allocation | `std::string_view` — zero copy |
-| Tokenisation | generic parser + inference | custom parser + per-column inference in C++ |
+| Tokenisation | generic parser + inference | RFC 4180 state machine + per-column inference in C++ |
 | Memory layout | per-column allocation | pre-sized typed column arrays |
-| DataFrame construction | automatic (heavy) | `pd.DataFrame(dict(zip(cols, arrays)))` |
+| DataFrame construction | automatic (heavy) | `pd.DataFrame(dict(zip(cols, arrays)), copy=False)` |
 
 For XLSX:
 

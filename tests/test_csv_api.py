@@ -8,6 +8,7 @@ import pandas.testing as pdt
 import pytest
 
 import tabx
+from tabx import dataframe as dataframe_mod
 
 
 def test_parse_csv_numbers_and_sum() -> None:
@@ -119,3 +120,72 @@ def test_parse_csv_numpy_rejects_ragged_rows() -> None:
 
     with pytest.raises(ValueError, match="CSV row width mismatch"):
         tabx.parse_csv_numpy(csv_text, skip_header=True)
+
+
+def test_parse_csv_dataframe_schema_aware_fast_path() -> None:
+    csv_text = "id,active,score,label\n1,true,10.5,alpha\n2,false,,beta"
+
+    df = tabx.parse_csv_dataframe(
+        csv_text,
+        skip_header=True,
+        schema=["int", "bool", "float", "string"],
+        engine="schema",
+        shape_mode="strict",
+    )
+
+    expected = pd.DataFrame(
+        {
+            "id": [1, 2],
+            "active": [True, False],
+            "score": [10.5, np.nan],
+            "label": ["alpha", "beta"],
+        }
+    )
+    pdt.assert_frame_equal(df, expected, check_dtype=False)
+
+
+def test_parse_csv_dataframe_engine_int_fast() -> None:
+    csv_text = "id,qty\n1,2\n3,4\n"
+
+    df = tabx.parse_csv_dataframe(
+        csv_text,
+        skip_header=True,
+        engine="int-fast",
+    )
+
+    expected = pd.DataFrame({"id": [1, 3], "qty": [2, 4]})
+    pdt.assert_frame_equal(df, expected, check_dtype=False)
+
+
+def test_parse_csv_dataframe_invalid_engine_raises() -> None:
+    with pytest.raises(ValueError, match="engine must be one of"):
+        tabx.parse_csv_dataframe("a,b\n1,2\n", engine="invalid")  # type: ignore[arg-type]
+
+
+def test_parse_csv_dataframe_schema_engine_requires_schema() -> None:
+    with pytest.raises(ValueError, match="requires schema"):
+        tabx.parse_csv_dataframe("a,b\n1,2\n", engine="schema", schema=None)
+
+
+def test_parse_csv_dataframe_auto_engine_can_route_int_fast() -> None:
+    csv_text = "id,qty\n1,2\n3,4\n"
+
+    df = tabx.parse_csv_dataframe(
+        csv_text,
+        skip_header=True,
+        engine="auto",
+        shape_mode="strict",
+    )
+
+    expected = pd.DataFrame({"id": [1, 3], "qty": [2, 4]})
+    pdt.assert_frame_equal(df, expected, check_dtype=False)
+
+
+def test_integer_only_sniff_helper_branches() -> None:
+    assert not dataframe_mod._looks_integer_only_csv('a,b\n"1",2\n', ",", True)
+    assert not dataframe_mod._looks_integer_only_csv("\n \n", ",", True)
+    assert not dataframe_mod._looks_integer_only_csv("a,b\n", ",", True)
+    assert not dataframe_mod._looks_integer_only_csv("a,b\n1,\n", ",", True)
+    assert not dataframe_mod._looks_integer_only_csv("a,b\n-,2\n", ",", True)
+    assert not dataframe_mod._looks_integer_only_csv("a,b\n1,2.5\n", ",", True)
+    assert dataframe_mod._looks_integer_only_csv("a,b\n+1,-2\n", ",", True)

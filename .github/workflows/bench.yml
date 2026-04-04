@@ -1,0 +1,81 @@
+name: benchmarks
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev
+
+      - name: Install package with benchmark deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,benchmark]"
+
+      - name: Fetch public datasets
+        run: python benchmarks/fetch_public_datasets.py
+
+      - name: Run synthetic CSV benchmarks
+        run: |
+          python benchmarks/benchmark.py \
+            --format csv-all \
+            --rows 100000 \
+            --iterations 5 \
+            --json-out benchmark-results/csv-all.json
+
+      - name: Profile CSV mixed hotspots (function-level)
+        run: |
+          python -m cProfile \
+            -o benchmark-results/csv-mixed.prof \
+            benchmarks/benchmark.py \
+            --format csv-mixed \
+            --rows 100000 \
+            --iterations 5
+          python benchmarks/profile_hotspots.py \
+            benchmark-results/csv-mixed.prof \
+            --output benchmark-results/csv-mixed-hotspots.txt \
+            --top 80
+
+      - name: Run mixed XLSX benchmark
+        run: |
+          python benchmarks/benchmark.py \
+            --format xlsx-mixed \
+            --rows 30000 \
+            --iterations 5 \
+            --json-out benchmark-results/xlsx-mixed.json
+
+      - name: Run external CSV benchmark
+        run: |
+          python benchmarks/benchmark.py \
+            --format csv-external \
+            --input benchmarks/public_data/flights-200k.csv \
+            --iterations 3 \
+            --json-out benchmark-results/external-flights-200k.json
+
+      - name: Check benchmark regression thresholds
+        run: |
+          python benchmarks/check_regressions.py \
+            benchmark-results/csv-all.json
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            benchmark-results/*.json
+            benchmark-results/*.prof
+            benchmark-results/*-hotspots.txt
