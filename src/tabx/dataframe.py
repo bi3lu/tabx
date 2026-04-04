@@ -112,8 +112,7 @@ def _apply_usecols(
         if missing:
             available = [str(col) for col in df.columns]
             raise ValueError(
-                "usecols columns not found: "
-                f"{missing}. Available columns: {available}"
+                "usecols columns not found: " f"{missing}. Available columns: {available}"
             )
 
         return cast("pd.DataFrame", df.loc[:, requested])

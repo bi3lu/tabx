@@ -266,10 +266,80 @@ def test_parse_csv_dataframe_usecols_mixed_types_rejected() -> None:
         tabx.parse_csv_dataframe(csv_text, usecols=["id", 1])  # type: ignore[list-item]
 
 
+def test_parse_csv_dataframe_usecols_empty_list_returns_same_columns() -> None:
+    csv_text = "id,qty\n1,2\n"
+    df = tabx.parse_csv_dataframe(csv_text, usecols=[])
+    expected = pd.DataFrame({"id": [1], "qty": [2]})
+    pdt.assert_frame_equal(df, expected, check_dtype=False)
+
+
 def test_parse_csv_dataframe_usecols_missing_column_has_clear_error() -> None:
     csv_text = "id,qty\n1,2\n"
     with pytest.raises(ValueError, match="usecols columns not found"):
         tabx.parse_csv_dataframe(csv_text, usecols=["id", "price"])
+
+
+def test_parse_csv_dataframe_usecols_int_positions() -> None:
+    csv_text = "id,qty,price\n1,2,10.5\n"
+    df = tabx.parse_csv_dataframe(csv_text, usecols=[0, 2])
+    expected = pd.DataFrame({"id": [1], "price": [10.5]})
+    pdt.assert_frame_equal(df, expected, check_dtype=False)
+
+
+def test_parse_csv_dataframe_usecols_negative_index_rejected() -> None:
+    csv_text = "id,qty\n1,2\n"
+    with pytest.raises(ValueError, match="usecols index out of range: -1"):
+        tabx.parse_csv_dataframe(csv_text, usecols=[-1])
+
+
+def test_apply_usecols_callable_typeerror_fallback_to_str() -> None:
+    frame = pd.DataFrame({0: [1], 1: [2]})
+
+    def only_str_prefix(col: object) -> bool:
+        if not isinstance(col, str):
+            raise TypeError("expected string")
+        return col == "0"
+
+    selected = dataframe_mod._apply_usecols(frame, only_str_prefix)
+    expected = pd.DataFrame({0: [1]})
+    pdt.assert_frame_equal(selected, expected, check_dtype=False)
+
+
+def test_apply_na_values_handles_empty_and_unknown_keys() -> None:
+    frame = pd.DataFrame({"note": ["ok", "NA"]})
+    # Empty token set for existing column and unknown column key should be no-op.
+    out = dataframe_mod._apply_na_values(frame, {"note": [], "unknown": ["NA"]})
+    pdt.assert_frame_equal(out, frame, check_dtype=False)
+
+
+def test_apply_na_values_empty_global_tokens_returns_original_object() -> None:
+    frame = pd.DataFrame({"note": ["ok"]})
+    out = dataframe_mod._apply_na_values(frame, [])
+    assert out is frame
+
+
+def test_core_supports_schema_false_on_typeerror() -> None:
+    class FakeCore:
+        def parse_csv_mixed(self, *_args: object, **_kwargs: object) -> None:
+            raise TypeError("schema unsupported")
+
+    assert dataframe_mod._core_supports_schema(FakeCore()) is False
+
+
+def test_parse_csv_dataframe_schema_forced_unavailable_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    csv_text = "id\n1\n"
+    monkeypatch.setattr(dataframe_mod, "_core_supports_schema", lambda _core: False)
+
+    with pytest.raises(ValueError, match="engine='schema' is unavailable"):
+        tabx.parse_csv_dataframe(
+            csv_text,
+            skip_header=True,
+            schema=["int"],
+            engine="schema",
+            shape_mode="strict",
+        )
 
 
 def test_parse_csv_file_dataframe_notebook_style_e2e_options(tmp_path: Path) -> None:
